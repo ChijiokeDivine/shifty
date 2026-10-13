@@ -1,0 +1,803 @@
+// prisma/schema.prisma
+// Core data model for Shiftii, a hospital shift-management platform.
+// Every business table carries an explicit organizationId and is
+// indexed on it — application code must ALWAYS filter by
+// organizationId at the query layer (see server/services/*).
+//
+// Hospital-domain note: `Location` is the generic name but maps to a
+// hospital "Unit" (ICU, ED, Med-Surg, ...) in this deployment — kept as
+// `Location` for schema continuity with the base platform.
+//
+// Compliance note: this schema deliberately does NOT model individual
+// patients or any patient-identifiable data. `UnitCensusSnapshot` stores
+// only aggregate counts/acuity scores per unit per shift-window — never
+// a patient roster, name, or MRN. `HandoverNote.freeTextNote` is the one
+// field capable of holding clinical detail; it is explicitly excluded
+// from every AI code path (see lib/ai/sanitize.ts and
+// server/services/handover.service.ts) and is never included in any
+// payload sent to an external AI provider.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../server/src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------
+// Auth identity
+// ---------------------------------------------------------------------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String?
+  name            String
+  phone           String?
+  isPlatformAdmin Boolean   @default(false)
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  memberships         Membership[]
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  invitationsSent     Invitation[]          @relation("InvitationInviter")
+  auditLogEntries     AuditLog[]            @relation("AuditActor")
+
+  @@index([email])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  requestIp String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------
+// Tenant / organization
+// ---------------------------------------------------------------------
+
+enum ClaimApprovalMode {
+  AUTO
+  MANAGER_APPROVAL
+}
+
+model Organization {
+  id           String  @id @default(cuid())
+  name         String
+  slug         String  @unique
+  contactEmail String?
+  contactPhone String?
+  timezone     String  @default("UTC")
+  weekStartDay Int     @default(1)
+  locale       String  @default("en")
+
+  defaultShiftLengthMinutes Int               @default(480)
+  defaultBreakMinutes       Int               @default(30)
+  maxWeeklyHours            Float?
+  minRestHoursBetweenShifts Float             @default(10)
+  claimApprovalMode         ClaimApprovalMode @default(MANAGER_APPROVAL)
+  swapApprovalMode          ClaimApprovalMode @default(MANAGER_APPROVAL)
+
+  // AI features are opt-in per organization even if provider keys are
+  // globally configured — a hospital may want them off entirely.
+  aiFeaturesEnabled Boolean @default(false)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations               Location[]
+  positions               Position[]
+  memberships             Membership[]
+  rosters                 Roster[]
+  shifts                  Shift[]
+  leaveRequests           LeaveRequest[]
+  notifications           Notification[]
+  auditLogs               AuditLog[]
+  invitations             Invitation[]
+  notificationPreferences OrganizationNotificationPreference[]
+  credentialTypes         CredentialType[]
+  censusSnapshots         UnitCensusSnapshot[]
+  handoverNotes           HandoverNote[]
+  fatigueSnapshots        FatigueSnapshot[]
+  aiInteractionLogs       AiInteractionLog[]
+
+  @@index([slug])
+}
+
+model Location {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  address        String?
+  // Hospital unit type — used for fairness/forecast grouping and to
+  // present sensible defaults (e.g. ICU implies stricter credential
+  // requirements). Free-form so it works for non-hospital deployments too.
+  unitType       String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  memberships     MembershipLocation[]
+  rosters         Roster[]
+  shifts          Shift[]
+  censusSnapshots UnitCensusSnapshot[]
+  handoverNotes   HandoverNote[]
+
+  @@index([organizationId])
+  @@unique([organizationId, name])
+}
+
+model Position {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  colorHex       String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  eligibleEmployees     EmployeePosition[]
+  shifts                Shift[]
+  credentialRequirements PositionCredentialRequirement[]
+
+  @@index([organizationId])
+  @@unique([organizationId, name])
+}
+
+// ---------------------------------------------------------------------
+// Membership (an employment relationship of a User within an Organization)
+// ---------------------------------------------------------------------
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role   MembershipRole   @default(EMPLOYEE)
+  status MembershipStatus @default(PENDING)
+
+  targetWeeklyHours Float?
+  payRateCents      Int?
+  payCurrency       String?   @default("USD")
+  startDate         DateTime?
+  deactivatedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  positions              EmployeePosition[]
+  locations              MembershipLocation[]
+  assignedShifts         Shift[]                  @relation("ShiftAssignee")
+  createdShifts          Shift[]                  @relation("ShiftCreatedBy")
+  availabilityRules      AvailabilityRule[]
+  availabilityExceptions AvailabilityException[]
+  leaveRequests          LeaveRequest[]           @relation("LeaveRequester")
+  reviewedLeaveRequests  LeaveRequest[]           @relation("LeaveReviewer")
+  shiftClaims            ShiftClaim[]             @relation("ClaimRequester")
+  reviewedShiftClaims    ShiftClaim[]             @relation("ClaimReviewer")
+  initiatedSwaps         ShiftSwapRequest[]       @relation("SwapInitiator")
+  targetedSwaps          ShiftSwapRequest[]       @relation("SwapTarget")
+  reviewedSwaps          ShiftSwapRequest[]       @relation("SwapReviewer")
+  notifications          Notification[]
+  auditLogEntries        AuditLog[]               @relation("AuditActorMembership")
+  credentials            EmployeeCredential[]
+  handoverNotesAuthored  HandoverNote[]           @relation("HandoverAuthor")
+  handoverNotesAcked     HandoverNote[]           @relation("HandoverAcknowledgedBy")
+  fatigueSnapshots       FatigueSnapshot[]
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, status])
+  @@index([organizationId, role])
+}
+
+model EmployeePosition {
+  id           String     @id @default(cuid())
+  membershipId String
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  positionId   String
+  position     Position   @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([membershipId, positionId])
+  @@index([positionId])
+}
+
+model MembershipLocation {
+  id           String     @id @default(cuid())
+  membershipId String
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  locationId   String
+  location     Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  isPrimary    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+
+  @@unique([membershipId, locationId])
+  @@index([locationId])
+}
+
+// ---------------------------------------------------------------------
+// Credentials & licensure (hospital-specific compliance surface)
+// ---------------------------------------------------------------------
+
+model CredentialType {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String // e.g. "RN License", "ACLS", "BLS", "PALS"
+  description    String?
+  // How many days before expiry to start warning — locally computed,
+  // never delegated to an external service.
+  warnDaysBeforeExpiry Int    @default(30)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  employeeCredentials    EmployeeCredential[]
+  positionRequirements   PositionCredentialRequirement[]
+
+  @@index([organizationId])
+  @@unique([organizationId, name])
+}
+
+model EmployeeCredential {
+  id               String         @id @default(cuid())
+  membershipId     String
+  membership       Membership     @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  credentialTypeId String
+  credentialType   CredentialType @relation(fields: [credentialTypeId], references: [id], onDelete: Cascade)
+
+  identifierLast4 String? // last 4 of license number only, never the full number
+  issuedAt        DateTime?
+  expiresAt       DateTime?
+  // Path within the private Supabase Storage credentials bucket — never
+  // a public URL, mirrors the leave-attachment pattern.
+  documentPath    String?
+
+  verifiedById String?
+  verifiedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([membershipId, credentialTypeId])
+  @@index([expiresAt])
+}
+
+model PositionCredentialRequirement {
+  id               String         @id @default(cuid())
+  positionId       String
+  position         Position       @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  credentialTypeId String
+  credentialType   CredentialType @relation(fields: [credentialTypeId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+
+  @@unique([positionId, credentialTypeId])
+}
+
+// ---------------------------------------------------------------------
+// Invitations
+// ---------------------------------------------------------------------
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model Invitation {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           MembershipRole   @default(EMPLOYEE)
+  locationId     String?
+  positionIds    String[]         @default([])
+  tokenHash      String           @unique
+  status         InvitationStatus @default(PENDING)
+  invitedById    String
+  invitedBy      User             @relation("InvitationInviter", fields: [invitedById], references: [id])
+  createdAt      DateTime         @default(now())
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  resendCount    Int              @default(0)
+  lastSentAt     DateTime         @default(now())
+
+  @@index([organizationId, status])
+  @@index([email])
+}
+
+// ---------------------------------------------------------------------
+// Rosters & Shifts
+// ---------------------------------------------------------------------
+
+enum RosterStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Roster {
+  id                 String       @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locationId         String?
+  location           Location?    @relation(fields: [locationId], references: [id])
+  name               String
+  startDate          DateTime
+  endDate            DateTime
+  status             RosterStatus @default(DRAFT)
+  availabilityLockAt DateTime?
+
+  createdById   String
+  publishedById String?
+  publishedAt   DateTime?
+  archivedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  shifts Shift[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, startDate, endDate])
+}
+
+enum ShiftStatus {
+  DRAFT
+  OPEN
+  ASSIGNED
+  CANCELLED
+}
+
+model Shift {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rosterId       String
+  roster         Roster       @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location     @relation(fields: [locationId], references: [id])
+  positionId     String
+  position       Position     @relation(fields: [positionId], references: [id])
+
+  employeeId String?
+  employee   Membership? @relation("ShiftAssignee", fields: [employeeId], references: [id])
+
+  date         DateTime
+  startAt      DateTime
+  endAt        DateTime
+  breakMinutes Int      @default(0)
+  notes        String?
+
+  status         ShiftStatus @default(DRAFT)
+  isOpenForClaim Boolean     @default(false)
+
+  createdById String
+  createdBy   Membership @relation("ShiftCreatedBy", fields: [createdById], references: [id])
+  version     Int        @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shiftClaims      ShiftClaim[]
+  swapsAsInitiator ShiftSwapRequest[] @relation("SwapInitiatorShift")
+  swapsAsTarget    ShiftSwapRequest[] @relation("SwapTargetShift")
+  handoverNotes    HandoverNote[]
+
+  @@index([organizationId, rosterId])
+  @@index([organizationId, employeeId, date])
+  @@index([organizationId, date])
+  @@index([organizationId, status, isOpenForClaim])
+}
+
+// ---------------------------------------------------------------------
+// Availability
+// ---------------------------------------------------------------------
+
+model AvailabilityRule {
+  id             String     @id @default(cuid())
+  membershipId   String
+  membership     Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  dayOfWeek      Int
+  startMinute    Int
+  endMinute      Int
+  isAvailable    Boolean    @default(true)
+  effectiveFrom  DateTime?
+  effectiveUntil DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([membershipId, dayOfWeek])
+}
+
+model AvailabilityException {
+  id           String     @id @default(cuid())
+  membershipId String
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  date         DateTime
+  isAvailable  Boolean
+  startMinute  Int?
+  endMinute    Int?
+  reason       String?
+  // Set when this row was created via the natural-language preference
+  // parser — always parsed LOCALLY (lib/local-ml + chrono-node); never
+  // logged as having been sent to an external AI provider because it
+  // never is. See server/services/preference-nlp.service.ts.
+  parsedFromText Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([membershipId, date, startMinute, endMinute])
+  @@index([membershipId, date])
+}
+
+// ---------------------------------------------------------------------
+// Leave
+// ---------------------------------------------------------------------
+
+enum LeaveType {
+  VACATION
+  SICK
+  PERSONAL
+  UNPAID
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LeaveRequest {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membershipId   String
+  membership     Membership   @relation("LeaveRequester", fields: [membershipId], references: [id], onDelete: Cascade)
+
+  type            LeaveType
+  customTypeLabel String?
+  startDate       DateTime
+  endDate         DateTime
+  reason          String?
+  attachmentPath  String?
+
+  status       LeaveStatus @default(PENDING)
+  reviewedById String?
+  reviewer     Membership? @relation("LeaveReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  managerNote  String?
+  cancelledAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, membershipId, status])
+  @@index([organizationId, startDate, endDate])
+}
+
+// ---------------------------------------------------------------------
+// Shift claims (open-shift claim, and give-up/release of an assigned shift)
+// ---------------------------------------------------------------------
+
+enum ShiftClaimType {
+  CLAIM
+  RELEASE
+}
+
+enum ShiftClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model ShiftClaim {
+  id             String           @id @default(cuid())
+  organizationId String
+  shiftId        String
+  shift          Shift            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  membershipId   String
+  membership     Membership       @relation("ClaimRequester", fields: [membershipId], references: [id], onDelete: Cascade)
+  type           ShiftClaimType
+  status         ShiftClaimStatus @default(PENDING)
+  note           String?
+
+  reviewedById String?
+  reviewer     Membership? @relation("ClaimReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, shiftId, status])
+  @@index([organizationId, membershipId, status])
+}
+
+// ---------------------------------------------------------------------
+// Shift swaps
+// ---------------------------------------------------------------------
+
+enum ShiftSwapStatus {
+  PENDING_TARGET
+  TARGET_ACCEPTED
+  PENDING_MANAGER
+  APPROVED
+  REJECTED
+  DECLINED
+  CANCELLED
+}
+
+model ShiftSwapRequest {
+  id                     String          @id @default(cuid())
+  organizationId         String
+  initiatorMembershipId  String
+  initiator              Membership      @relation("SwapInitiator", fields: [initiatorMembershipId], references: [id], onDelete: Cascade)
+  initiatorShiftId       String
+  initiatorShift         Shift           @relation("SwapInitiatorShift", fields: [initiatorShiftId], references: [id], onDelete: Cascade)
+
+  targetMembershipId String
+  target             Membership @relation("SwapTarget", fields: [targetMembershipId], references: [id], onDelete: Cascade)
+  targetShiftId      String
+  targetShift        Shift      @relation("SwapTargetShift", fields: [targetShiftId], references: [id], onDelete: Cascade)
+
+  status            ShiftSwapStatus @default(PENDING_TARGET)
+  note              String?
+  targetRespondedAt DateTime?
+
+  reviewedById String?
+  reviewer     Membership? @relation("SwapReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, initiatorMembershipId])
+  @@index([organizationId, targetMembershipId])
+}
+
+// ---------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------
+
+enum NotificationType {
+  ROSTER_PUBLISHED
+  ROSTER_CHANGED
+  SHIFT_ASSIGNED
+  SHIFT_REMOVED
+  SHIFT_UPDATED
+  LEAVE_SUBMITTED
+  LEAVE_DECIDED
+  CLAIM_SUBMITTED
+  CLAIM_DECIDED
+  SWAP_REQUESTED
+  SWAP_TARGET_RESPONDED
+  SWAP_DECIDED
+  INVITATION_SENT
+  CREDENTIAL_EXPIRING
+  GAP_FILL_SUGGESTED
+  FATIGUE_RISK_FLAGGED
+  FORECAST_GAP_WARNING
+  HANDOVER_READY
+  GENERIC
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipientId    String
+  recipient      Membership       @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  title          String
+  message        String
+  link           String?
+  metadata       Json?
+  isRead         Boolean          @default(false)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId, recipientId, isRead])
+  @@index([recipientId, createdAt])
+}
+
+model OrganizationNotificationPreference {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  emailEnabled   Boolean          @default(true)
+  inAppEnabled   Boolean          @default(true)
+
+  @@unique([organizationId, type])
+}
+
+// ---------------------------------------------------------------------
+// Hospital operational data: census/acuity (aggregate only, no PHI),
+// handover notes, and fatigue snapshots
+// ---------------------------------------------------------------------
+
+/// Aggregate, non-patient-identifiable staffing-demand signal for a
+/// unit over a shift window. This table must NEVER be extended with
+/// patient names, MRNs, room numbers, or diagnoses — it exists purely
+/// to feed the local forecasting model (lib/local-ml/forecast.ts).
+model UnitCensusSnapshot {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  date         DateTime // date-only, org-local
+  shiftWindow  String   // e.g. "DAY", "NIGHT", "EVENING" — org-defined label
+  patientCount Int
+  // Average acuity on a small numeric scale (e.g. 1-5). Aggregate only —
+  // never a per-patient breakdown.
+  averageAcuity Float?
+  recordedById  String
+
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, locationId, date, shiftWindow])
+  @@index([organizationId, locationId, date])
+}
+
+/// Structured shift-handover record. `freeTextNote` is the ONLY field in
+/// this entire schema that hospitals are likely to fill with clinical
+/// detail — it is categorically excluded from every AI code path (see
+/// server/services/handover.service.ts and lib/ai/sanitize.ts, which has
+/// no function capable of reading this model at all).
+model HandoverNote {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shiftId        String
+  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   Membership @relation("HandoverAuthor", fields: [authorId], references: [id])
+
+  // Structured, non-identifying checklist — safe to aggregate/report on.
+  pendingTasksCount     Int     @default(0)
+  criticalAlertsCount   Int     @default(0)
+  equipmentIssuesFlag   Boolean @default(false)
+  // Free-text clinical detail — sensitive, local-only, never sent to AI.
+  freeTextNote          String?
+
+  acknowledgedById String?
+  acknowledgedBy   Membership? @relation("HandoverAcknowledgedBy", fields: [acknowledgedById], references: [id])
+  acknowledgedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, shiftId])
+  @@index([organizationId, locationId, createdAt])
+}
+
+/// Daily, locally-computed (never AI-derived) fatigue/burnout risk
+/// snapshot per employee. Health-adjacent data — computation happens
+/// entirely in lib/local-ml/fatigue.ts with zero network calls, and this
+/// table is never read by lib/ai/*.
+model FatigueSnapshot {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membershipId   String
+  membership     Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  date  DateTime // date-only, the day this snapshot was computed for
+  score Int // 0-100, higher = higher fatigue risk
+  flags Json // e.g. { consecutiveNights: 4, restViolations: 1, hours7d: 52 }
+
+  createdAt DateTime @default(now())
+
+  @@unique([membershipId, date])
+  @@index([organizationId, date])
+}
+
+// ---------------------------------------------------------------------
+// AI usage audit — metadata only, NEVER the prompt/response content
+// ---------------------------------------------------------------------
+
+/// Observability/audit trail for every call through lib/ai/client.ts.
+/// Deliberately stores metadata only (which agent, which provider/model,
+/// token counts, latency, whether it succeeded) — never the prompt or
+/// completion text, so this table itself can never become a leak vector
+/// even though it exists specifically to audit AI usage.
+model AiInteractionLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentName      String // e.g. "gap-fill-suggester", "forecast-narrative"
+  provider       String // "groq" | "openrouter"
+  model          String
+  promptTokens   Int?
+  completionTokens Int?
+  latencyMs      Int
+  success        Boolean
+  errorCode      String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, agentName])
+}
+
+// ---------------------------------------------------------------------
+// Audit log — append-only
+// ---------------------------------------------------------------------
+
+model AuditLog {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUserId       String?
+  actorUser         User?        @relation("AuditActor", fields: [actorUserId], references: [id])
+  actorMembershipId String?
+  actorMembership   Membership?  @relation("AuditActorMembership", fields: [actorMembershipId], references: [id])
+  action            String
+  entityType        String
+  entityId          String
+  before            Json?
+  after             Json?
+  metadata          Json?
+  ipAddress         String?
+  createdAt         DateTime     @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, action])
+}

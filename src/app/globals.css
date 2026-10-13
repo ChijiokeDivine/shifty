@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+* {
+  scroll-behavior: smooth;
+}
