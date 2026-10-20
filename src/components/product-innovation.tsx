@@ -154,15 +154,18 @@ export function FindYourFit() {
       }}
     >
       <div className="mx-auto max-w-7xl px-6 pt-20 lg:px-10 lg:pt-28 text-center">
-        <h2 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white mb-6 leading-[1.1]">
+        <h2 className="font-serif text-3xl sm:text-5xl lg:text-6xl text-white mb-6 leading-[1.1]">
           Built for every unit
           <br />
           and every shift
         </h2>
-        <p className="text-white/80 text-lg max-w-2xl mx-auto mb-10">
+        <p className="text-white/80 text-lg max-w-2xl mx-auto mb-10 hidden md:block">
           Whether you&apos;re covering the ICU, filling a last-minute
           call-out, or planning next month&apos;s schedule, your scheduling
           platform fits the way your hospital runs.
+        </p>
+        <p className="text-white/80 text-lg max-w-2xl mx-auto mb-10 md:hidden">
+          From last-minute call-outs to next month&apos;s schedules, built around your hospital.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mb-14">

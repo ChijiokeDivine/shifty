@@ -79,11 +79,14 @@ export function PlatformSplit() {
   return (
     <section className="mx-auto max-w-7xl px-6 py-16 lg:px-10 lg:py-24">
       <div className="text-center max-w-2xl mx-auto mb-12">
-        <h2 className="font-serif text-4xl sm:text-5xl mb-4">
+        <h2 className="font-serif text-3xl sm:text-5xl mb-4">
           One Platform for Hospital Operations
         </h2>
-        <p className="text-[#111110]/70 text-lg">
+        <p className="text-[#111110]/70 text-lg hidden md:block">
           Bring your workflows, and daily operations together with Shifti. Give your entire team one connected platform to work smarter and deliver better care.
+        </p>
+        <p className="text-[#111110]/70 text-lg md:hidden">
+          Bring your team, workflows, and daily operations together in one platform built for better care.
         </p>
       </div>
 

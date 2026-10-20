@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, ChevronRight, ChevronDown, Menu } from "lucide-react";
+import { X, ChevronRight, ChevronDown } from "lucide-react";
 import { MEGA_MENUS, MegaMenuPanel } from "./mega-menu";
 
 const MEGA_MENU_KEYS = [ "Solutions", "Company"] as const;
@@ -40,10 +40,14 @@ export function Navbar() {
 
   return (
     <header
-      className="sticky top-0 z-40 bg-[#CCDBD6]/95 backdrop-blur "
+      className={
+        mobileOpen
+          ? "fixed inset-0 z-50 flex h-[100dvh] flex-col bg-[#F6F4EF]"
+          : "sticky top-0 z-40 bg-[#CCDBD6]/95 backdrop-blur"
+      }
       onMouseLeave={() => setOpenMenu(null)}
     >
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
+      <nav className="mx-auto flex w-full max-w-7xl flex-none items-center justify-between px-6 py-4 lg:px-10">
         <a href="#" className="font-serif text-[28px] leading-none tracking-tight">
           Shifti
         </a>
@@ -80,16 +84,32 @@ export function Navbar() {
         <button
           className="lg:hidden"
           aria-label="Toggle menu"
+          aria-expanded={mobileOpen}
           onClick={() => setMobileOpen((v) => !v)}
         >
-          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          {mobileOpen ? (
+            <X size={22} />
+          ) : (
+            <svg
+              aria-hidden="true"
+              width={24}
+              height={24}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            >
+              <path d="M2 7h20M2 17h20" />
+            </svg>
+          )}
         </button>
       </nav>
 
       {openMenu && <MegaMenuPanel data={MEGA_MENUS[openMenu]} />}
 
       {mobileOpen && (
-        <div className="lg:hidden border-t border-black/10 bg-[#F6F4EF] px-6 py-4 flex flex-col gap-4">
+        <div className="lg:hidden flex min-h-0 flex-1 flex-col gap-4 border-t border-black/10 bg-[#F6F4EF] px-6 py-4">
           {[ "Solutions", "Security", "Company"].map(
             (item) => (
               <a key={item} href="#" className="text-[15px]">
