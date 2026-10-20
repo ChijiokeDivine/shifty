@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Include full origin URLs with http://
   allowedDevOrigins: ["http://127.0.0.1:3000", "http://localhost:3000"],
-  serverExternalPackages: ["better-auth", "kysely", "pg", "@electric-sql/pglite"],
+  serverExternalPackages: ["kysely", "pg", "@electric-sql/pglite"],
   async headers() {
     return [
       {
