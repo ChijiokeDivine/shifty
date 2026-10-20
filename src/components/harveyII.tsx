@@ -30,7 +30,7 @@ export function HarveyII() {
         The most powerful Shift platform yet. Smarter agents can now deliver more
         complex work in exactly the way you like it.
       </p>
-      <button className="rounded-md bg-[#111110] px-6 py-3.5 text-[15px] text-white hover:bg-black transition-colors mb-12">
+      <button className="rounded-md cursor-pointer bg-[#111110] px-6 py-3.5 text-[15px] text-white hover:bg-black transition-colors mb-12">
         Request a Demo
       </button>
 

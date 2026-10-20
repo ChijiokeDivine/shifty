@@ -11,7 +11,7 @@ export function Hero() {
           <p className="text-lg lg:text-xl leading-snug text-[#111110]/90 max-w-md">
             Shiftii streamlines hospital operations for smarter teams and better care.
           </p>
-          <button className="w-fit rounded-md bg-[#111110] px-6 py-3.5 text-[15px] text-white hover:bg-black transition-colors">
+          <button className="w-fit cursor-pointer rounded-md bg-[#111110] px-6 py-3.5 text-[15px] text-white hover:bg-black transition-colors">
             Request a Demo
           </button>
         </div>

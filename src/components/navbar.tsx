@@ -68,11 +68,11 @@ export function Navbar() {
         </div>
 
         <div className="hidden lg:flex items-center gap-3">
-          <button className="flex items-center gap-1.5 rounded-md border border-black/70 px-4 py-2 text-sm">
+          <button className="flex cursor-pointer items-center gap-1.5 rounded-md border border-black/70 px-4 py-2 text-sm">
             Login
             <ChevronRight size={14} strokeWidth={1.75} />
           </button>
-          <button className="rounded-md bg-[#111110] px-4 py-2 text-sm text-white hover:bg-black transition-colors">
+          <button className="rounded-md cursor-pointer bg-[#111110] px-4 py-2 text-sm text-white hover:bg-black transition-colors">
             Request a Demo
           </button>
         </div>

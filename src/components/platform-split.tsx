@@ -80,12 +80,10 @@ export function PlatformSplit() {
     <section className="mx-auto max-w-7xl px-6 py-16 lg:px-10 lg:py-24">
       <div className="text-center max-w-2xl mx-auto mb-12">
         <h2 className="font-serif text-4xl sm:text-5xl mb-4">
-          One Platform for Medical Work
+          One Platform for Hospital Operations
         </h2>
         <p className="text-[#111110]/70 text-lg">
-          Hospitals and health systems do their best work with Shifti. Run
-          everything your team and health system needs on one collaborative
-          platform.
+          Bring your workflows, and daily operations together with Shifti. Give your entire team one connected platform to work smarter and deliver better care.
         </p>
       </div>
 
@@ -98,7 +96,7 @@ export function PlatformSplit() {
         >
           <PlatformCard
             title="For Hospitals & Health Systems"
-            copy="Run every client matter securely on one platform, with your nurses and staff working from the same context."
+            copy="Coordinate staff, streamline daily operations, and keep your entire healthcare team aligned on one platform."
             cta="Explore Shifti"
             bgImage="/assets/img/4d82ceec018ada91.webp"
             screenshotImage="/image.webp"

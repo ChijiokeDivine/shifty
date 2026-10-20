@@ -19,7 +19,7 @@ export default function Page() {
       <div className="mx-auto max-w-7xl px-6 lg:px-10">
         <DashboardVideo />
       </div>
-      <LogoCloud />
+      {/* <LogoCloud /> */}
       <PlatformSplit />
       <HarveyII />
       <FindYourFit />

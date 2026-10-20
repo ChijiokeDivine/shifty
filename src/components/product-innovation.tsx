@@ -42,16 +42,22 @@ const CONTENT: Record<Tab, FitItem[]> = {
       bgImage: "/videos/5998385-hd_1280_720_30fps.mp4",
     },
     {
-      icon: Bell,
-      title: "Coverage Alerts",
-      desc: "Get notified the moment a shift risks going unfilled.",
-      bgImage: "/assets/img/8d9fbf7e5e26e9a7.webp",
+      icon: HeartPulse,
+      title: "ICU & Critical Care",
+      desc: "Guarantee minimum coverage for your highest-acuity units.",
+      bgImage: "/videos/3197622-hd_1920_1080_25fps.mp4",
     },
+    // {
+    //   icon: Bell,
+    //   title: "Coverage Alerts",
+    //   desc: "Get notified the moment a shift risks going unfilled.",
+    //   bgImage: "/assets/img/8d9fbf7e5e26e9a7.webp",
+    // },
     {
       icon: Activity,
       title: "Real-Time Staffing Ratios",
       desc: "See nurse-to-patient ratios live, unit by unit.",
-      bgImage: "/assets/img/dab6959b10b3183b.webp",
+      bgImage: "/videos/6130024-hd_1280_720_30fps.mp4",
     },
   ],
   Roles: [
@@ -148,9 +154,6 @@ export function FindYourFit() {
       }}
     >
       <div className="mx-auto max-w-7xl px-6 pt-20 lg:px-10 lg:pt-28 text-center">
-        <span className="inline-block font-serif italic text-white/70 text-lg mb-4">
-          Find your fit
-        </span>
         <h2 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-white mb-6 leading-[1.1]">
           Built for every unit
           <br />
@@ -179,7 +182,7 @@ export function FindYourFit() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-6 pb-20 lg:px-10 lg:pb-28">
+      <div className="mx-auto max-w-7xl px-6 pb-20 lg:px-10 lg:pb-28">
         <div
           className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-5 transition-opacity duration-300 ${
             visible ? "opacity-100" : "opacity-0"
