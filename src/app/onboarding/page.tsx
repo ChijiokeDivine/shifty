@@ -56,7 +56,7 @@ export default function CompanyOnboardingPage() {
       if (!cancelled) setChecking(false);
     });
     return () => { cancelled = true; };
-  }, [user?.id, isPending, user?.displayName, user?.primaryEmail, user]);
+  }, [user?.id, isPending, user?.displayName, user?.primaryEmail]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
