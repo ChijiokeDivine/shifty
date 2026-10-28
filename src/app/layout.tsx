@@ -1,14 +1,6 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import localFont from "next/font/local"; // 1. Import localFont
 import "./globals.css";
-
-const cormorant = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-serif",
-  display: "swap",
-});
 
 // 2. Configure Google Sans pointing to the public directory
 const googleSans = localFont({
@@ -41,7 +33,7 @@ export default function RootLayout({
 }) {
   return (
     // 3. Inject the new googleSans variable class here
-    <html lang="en" className={`${cormorant.variable} ${googleSans.variable}`}>
+    <html lang="en" className={googleSans.variable}>
       <body className="font-sans bg-[#CCDBD6] text-[#111110] antialiased">
         {children}
       </body>
