@@ -11,6 +11,8 @@ export default tseslint.config(
     ignores: [
       "dist/**",
       ".next/**",
+      // Next.js regenerates this file; it contains required triple-slash references.
+      "next-env.d.ts",
       ".vercel/**",
       "node_modules/**",
     ],
