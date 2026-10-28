@@ -33,7 +33,7 @@ export async function createRoster(
   if (!name || name.length > 120) {
     throw new ConstraintError(["Roster name must contain 1 to 120 characters."]);
   }
-  const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   const validDate = (date: string): boolean =>
     datePattern.test(date) && !Number.isNaN(Date.parse(`${date}T12:00:00Z`)) &&
     new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) === date;
