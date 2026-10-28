@@ -10,7 +10,7 @@ export type AuthEmailEnvironment = {
 };
 
 export function isAuthEmailConfigured(
-  env: AuthEmailEnvironment = process.env,
+  env: AuthEmailEnvironment = { RESEND_API_KEY: process.env.RESEND_API_KEY, AUTH_EMAIL_FROM: process.env.AUTH_EMAIL_FROM },
 ): boolean {
   return Boolean(env.RESEND_API_KEY?.trim() && env.AUTH_EMAIL_FROM?.trim());
 }
@@ -30,7 +30,7 @@ export async function sendAuthEmail(
     fetchImpl?: typeof fetch;
   } = {},
 ): Promise<void> {
-  const env = options.env ?? process.env;
+  const env = options.env ?? { RESEND_API_KEY: process.env.RESEND_API_KEY, AUTH_EMAIL_FROM: process.env.AUTH_EMAIL_FROM };
   const key = env.RESEND_API_KEY?.trim();
   const from = env.AUTH_EMAIL_FROM?.trim();
   if (!key || !from) {
