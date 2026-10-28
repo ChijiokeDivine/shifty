@@ -107,13 +107,23 @@ export async function loadSessionContext(userId: string): Promise<SessionContext
 }
 
 export async function requireContext(userId: string): Promise<SessionContext> {
-  const { ensureHospital } = await import("./seed.server");
   let ctx = await loadSessionContext(userId);
-  if (!ctx) {
+  // Preserve the old seeded demo ONLY for the local auth-disabled preview.
+  // Real users must register or accept a company invitation instead.
+  const demoMode =
+    process.env.NEXT_PUBLIC_AUTH_ENABLED === "false" &&
+    !process.env.DATABASE_URL?.trim();
+  if (!ctx && demoMode) {
+    const { ensureHospital } = await import("./seed.server");
     await ensureHospital(userId);
     ctx = await loadSessionContext(userId);
   }
-  if (!ctx) throw new NotFoundError("No hospital membership for this account.");
+  if (!ctx) {
+    throw new NotFoundError("No company membership yet. Complete company registration or accept an invitation.");
+  }
+  if (!ctx.organization.isActive) {
+    throw new ForbiddenError("This company is inactive. Contact your administrator.");
+  }
   return ctx;
 }
 
