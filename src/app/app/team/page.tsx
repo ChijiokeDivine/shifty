@@ -6,9 +6,7 @@ import { ArrowLeft, ArrowRight, Building2, CheckCircle2, Loader2, MapPin, Pencil
 import { createLocation, createPosition, deactivateStaff, listLocations, listPositions, listStaff, updateStaffProfile } from "@/lib/api/people";
 import { getSessionContext } from "@/lib/api/session";
 import type { Location, MembershipRole, Position } from "@/lib/shiftii/types";
-
-type StaffRow = Awaited<ReturnType<typeof listStaff>> extends { ok: true; data: infer U }
-  ? U extends (infer R)[] ? R : never : never;
+import type { StaffRow } from "@/lib/shiftii/services/staff.server";
 
 export default function TeamPage() {
   const [members, setMembers] = useState<StaffRow[]>([]);
