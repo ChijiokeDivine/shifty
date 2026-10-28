@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { X, ChevronRight, ChevronDown } from "lucide-react";
 import { MEGA_MENUS, MegaMenuPanel } from "./mega-menu";
 
@@ -72,13 +73,13 @@ export function Navbar() {
         </div>
 
         <div className="hidden lg:flex items-center gap-3">
-          <button className="flex cursor-pointer items-center gap-1.5 rounded-md border border-black/70 px-4 py-2 text-sm">
+          <Link href="/login" className="flex cursor-pointer items-center gap-1.5 rounded-md border border-black/70 px-4 py-2 text-sm">
             Login
             <ChevronRight size={14} strokeWidth={1.75} />
-          </button>
-          <button className="rounded-md cursor-pointer bg-[#111110] px-4 py-2 text-sm text-white hover:bg-black transition-colors">
-            Request a Demo
-          </button>
+          </Link>
+          <Link href="/signup" className="rounded-md cursor-pointer bg-[#176343] px-4 py-2 text-sm text-white hover:bg-[#10492F] transition-colors">
+            Get Started
+          </Link>
         </div>
 
         <button
@@ -118,12 +119,12 @@ export function Navbar() {
             )
           )}
           <div className="flex gap-3 pt-2">
-            <button className="flex-1 rounded-md border border-black/70 px-4 py-2 text-sm">
+            <Link href="/login" className="flex-1 rounded-md border border-black/70 px-4 py-2 text-center text-sm">
               Login
-            </button>
-            <button className="flex-1 rounded-md bg-[#111110] px-4 py-2 text-sm text-white">
-              Request a Demo
-            </button>
+            </Link>
+            <Link href="/signup" className="flex-1 rounded-md bg-[#176343] px-4 py-2 text-center text-sm text-white">
+              Get Started
+            </Link>
           </div>
         </div>
       )}
