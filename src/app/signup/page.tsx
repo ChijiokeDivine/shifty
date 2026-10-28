@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { emailDeliveryStatus } from "@/lib/api/auth-status";
 
 export default function SignUpPage() {
   const { user, isPending } = useCurrentUserState();
@@ -14,9 +15,16 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [emailReady, setEmailReady] = useState<boolean | null>(null);
+  const [verificationSent, setVerificationSent] = useState(false);
+
+  useEffect(() => {
+    void emailDeliveryStatus().then((r) => setEmailReady(r.configured)).catch(() => setEmailReady(false));
+  }, []);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!emailReady) return;
     setError("");
     if (password.length < 8) {
       setError("Use a password with at least 8 characters.");
@@ -37,7 +45,7 @@ export default function SignUpPage() {
       if (result.error) {
         setError(result.error.message ?? "Could not create your account.");
       } else {
-        window.location.assign(nextDestination());
+        setVerificationSent(true);
       }
     } catch {
       setError("Could not create your account. Please try again.");
@@ -55,14 +63,16 @@ export default function SignUpPage() {
         <section className="rounded-3xl border border-[#E2EBE3] bg-white p-6 shadow-[0_25px_85px_rgba(20,61,39,0.07)] sm:p-10">
           <h2 className="text-2xl font-semibold">Create an account</h2><p className="mt-2 text-sm text-[#647368]">First, create your personal login.</p>
           {!authEnabled ? <p role="status" className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Account registration is not enabled in this environment. Enable authentication to continue.</p>
+          : verificationSent ? <div className="mt-7"><p role="status" className="rounded-xl bg-[#EAF7EF] p-4 text-sm leading-6 text-[#176343]">Check your email for a verification link. After verification, sign in to complete your company registration.</p><Link href="/login" className="mt-5 inline-flex items-center rounded-xl bg-[#176343] px-5 py-3 font-semibold text-white">Continue to sign in</Link></div>
           : user && !isPending ? <div className="mt-7"><p className="text-sm text-[#647368]">You are already signed in.</p><Link href="/onboarding" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#176343] px-5 py-3 text-white">Continue to company setup <ArrowRight size={18}/></Link></div>
           : <form onSubmit={submit} className="mt-7 space-y-5">
             <div><label htmlFor="full-name" className="text-sm font-medium">Full name</label><input id="full-name" required minLength={2} maxLength={120} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} className={field} placeholder="Your full name"/></div>
             <div><label htmlFor="email" className="text-sm font-medium">Work email</label><input id="email" type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className={field} placeholder="you@company.com"/></div>
             <div><label htmlFor="password" className="text-sm font-medium">Password</label><input id="password" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} className={field} placeholder="At least 8 characters"/></div>
             <div><label htmlFor="confirm" className="text-sm font-medium">Confirm password</label><input id="confirm" type="password" required minLength={8} autoComplete="new-password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} className={field}/></div>
+            {emailReady === false && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Email registration is unavailable until the email provider is configured.</p>}
             {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-            <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#176343] px-5 py-4 font-semibold text-white hover:bg-[#10492F] disabled:opacity-60">{busy ? <><Loader2 size={18} className="animate-spin"/> Creating account...</> : <>Create account <ArrowRight size={18}/></>}</button>
+            <button type="submit" disabled={busy || !emailReady} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#176343] px-5 py-4 font-semibold text-white hover:bg-[#10492F] disabled:opacity-60">{busy ? <><Loader2 size={18} className="animate-spin"/> Creating account...</> : <>Create account <ArrowRight size={18}/></>}</button>
             <p className="text-center text-xs text-[#849187]">You'll set up your company on the next screen.</p>
           </form>}
         </section>
