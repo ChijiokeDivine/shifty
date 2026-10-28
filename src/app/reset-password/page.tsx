@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, KeyRound, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 
 export default function ResetPasswordPage() {
+  return <Suspense fallback={<main className="min-h-screen bg-[#F5F9F5] p-12 text-[#647368]">Loading password reset...</main>}><ResetPasswordForm/></Suspense>;
+}
+
+function ResetPasswordForm() {
   const params = useSearchParams();
   const token = params.get("token");
   const invalid = params.get("error");
