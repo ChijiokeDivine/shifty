@@ -48,6 +48,10 @@ export {
 
 export {
   listStaff,
+  updateStaffProfile,
+  deactivateStaff,
+  createLocation,
+  createPosition,
   listLocations,
   listPositions,
   updateOrgSettings,
@@ -100,6 +104,8 @@ export const API_CATALOG: { group: string; name: string; purpose: string }[] = [
   { group: "roster", name: "assignShift / unassignShift / setOpenForClaim", purpose: "Manager assignment + marketplace toggle" },
   { group: "roster", name: "generateFairRoster", purpose: "Local constraint solver for unfilled slots" },
   { group: "people", name: "listStaff / listLocations / listPositions", purpose: "Directory" },
+  { group: "people", name: "updateStaffProfile / deactivateStaff", purpose: "Manage staff profiles, roles, assignments and status" },
+  { group: "people", name: "createLocation / createPosition", purpose: "Set up company locations and job roles" },
   { group: "people", name: "parsePreference", purpose: "Local NLP: 'I can't do nights next week'" },
   { group: "people", name: "submitLeave / reviewLeave", purpose: "Leave workflow" },
   { group: "people", name: "listCredentialAlerts", purpose: "Local expiry warnings (last-4 only, never full license)" },
