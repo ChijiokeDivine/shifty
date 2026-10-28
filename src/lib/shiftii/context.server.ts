@@ -11,7 +11,7 @@ export function mapOrg(row: OrgRow): Organization {
     name: str(row.name),
     slug: str(row.slug),
     timezone: str(row.timezone) || "America/New_York",
-    weekStartDay: num(row.week_start_day) || 1,
+    weekStartDay: row.week_start_day == null ? 1 : num(row.week_start_day),
     locale: str(row.locale) || "en",
     defaultShiftLengthMinutes: num(row.default_shift_length_minutes) || 720,
     defaultBreakMinutes: num(row.default_break_minutes) || 30,
