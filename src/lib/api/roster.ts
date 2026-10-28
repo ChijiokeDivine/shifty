@@ -86,6 +86,19 @@ export async function createShift(input: {
     });
 }
 
+export async function createRoster(input: {
+  name: string;
+  startDate: string;
+  endDate: string;
+  locationId?: string | null;
+}) {
+  const userId = await requireAuthedUserId();
+  return withOrg(userId, async (ctx) => {
+    const { createRoster } = await import("@/lib/shiftii/services/roster.server");
+    return createRoster(ctx, input);
+  });
+}
+
 export async function listRosters() {
   const userId = await requireAuthedUserId();
   return withOrg(userId, async (ctx) => {
