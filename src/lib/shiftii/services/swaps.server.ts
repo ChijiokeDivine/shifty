@@ -289,10 +289,9 @@ async function executeSwap(ctx: SessionContext, row: Record<string, unknown>): P
       where id in ($1,$2) and organization_id = $3`,
     [initiatorShiftId, targetShiftId, ctx.organization.id],
   );
-  const [incomingTarget, incomingInitiator] = await Promise.all([
-    evaluateAssignment(ctx, targetId, initiatorShiftId),
-    evaluateAssignment(ctx, initiatorId, targetShiftId),
-  ]);
+  // Use one query at a time on the transaction's single database connection.
+  const incomingTarget = await evaluateAssignment(ctx, targetId, initiatorShiftId);
+  const incomingInitiator = await evaluateAssignment(ctx, initiatorId, targetShiftId);
   if (!incomingTarget.ok || !incomingInitiator.ok) {
     // Throwing rolls back BOTH temporary removals, instead of trying to
     // repair the shifts with separate best-effort updates.
