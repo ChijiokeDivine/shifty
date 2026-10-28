@@ -54,6 +54,10 @@ export async function listShifts(
 ): Promise<Shift[]> {
   const params: unknown[] = [ctx.organization.id];
   let where = "s.organization_id = $1";
+  // Staff never receive unpublished draft shifts from another team member.
+  if (!["OWNER", "ADMIN", "MANAGER"].includes(ctx.membership.role)) {
+    where += " and exists (select 1 from rosters r where r.id = s.roster_id and r.organization_id = s.organization_id and r.status = 'PUBLISHED')";
+  }
   if (filters.from) {
     params.push(filters.from);
     where += ` and s.date >= $${params.length}`;
