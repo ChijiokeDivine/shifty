@@ -370,3 +370,24 @@ export async function rescheduleShift(
     return getShift(ctx, input.shiftId);
   });
 }
+
+/** Atomically move a shift to a date and optionally assign another employee. */
+export async function moveAndAssignShift(
+  ctx: SessionContext,
+  input: { shiftId: string; date: string; expectedVersion: number; membershipId?: string },
+): Promise<Shift> {
+  assertManager(ctx);
+  return withTransaction(async () => {
+    // Reuse the existing roster lock, version check and eligibility logic.
+    // Both edits share one connection and either fully commit or fully rollback.
+    const moved = await rescheduleShift(ctx, {
+      shiftId: input.shiftId, date: input.date, expectedVersion: input.expectedVersion,
+    });
+    if (!input.membershipId || input.membershipId === moved.employeeId) return moved;
+    return assignShift(ctx, {
+      shiftId: moved.id,
+      membershipId: input.membershipId,
+      expectedVersion: moved.version,
+    });
+  });
+}
