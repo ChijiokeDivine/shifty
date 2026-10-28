@@ -32,12 +32,12 @@ export default function SignUpPage() {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
-        callbackURL: "/onboarding",
+        callbackURL: nextDestination(),
       });
       if (result.error) {
         setError(result.error.message ?? "Could not create your account.");
       } else {
-        window.location.assign("/onboarding");
+        window.location.assign(nextDestination());
       }
     } catch {
       setError("Could not create your account. Please try again.");
@@ -69,4 +69,11 @@ export default function SignUpPage() {
       </div>
     </main>
   );
+}
+
+function nextDestination(): string {
+  if (typeof window === "undefined") return "/onboarding";
+  const token = new URLSearchParams(window.location.search).get("invite");
+  // Only allow server-issued invite token destinations, not arbitrary URLs.
+  return token && /^[a-f0-9]{64}$/.test(token) ? `/invite/${token}` : "/onboarding";
 }
