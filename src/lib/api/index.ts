@@ -20,6 +20,7 @@ export type { Result, Ok, Fail } from "./_run";
 
 export { getSessionContext, getDashboard } from "./session";
 export { getOnboardingStatus, registerCompany } from "./onboarding";
+export { listInvitations, createInvitation, revokeInvitation, previewInvitation, acceptInvitation } from "./invitations";
 
 export {
   listShifts,
@@ -88,6 +89,7 @@ export {
 
 export const API_CATALOG: { group: string; name: string; purpose: string }[] = [
   { group: "session", name: "getSessionContext", purpose: "Org + membership for the signed-in user (seeds hospital on first call)" },
+  { group: "people", name: "createInvitation / acceptInvitation", purpose: "Invite and onboard staff securely with single-use links" },
   { group: "session", name: "getDashboard", purpose: "Tonight's coverage, gaps, pending work, fatigue, credentials, my shifts" },
   { group: "roster", name: "createRoster", purpose: "Manager creates a new organization-scoped draft roster" },
   { group: "roster", name: "listShifts", purpose: "Filterable shift list (unit, date, mine, open claims)" },
