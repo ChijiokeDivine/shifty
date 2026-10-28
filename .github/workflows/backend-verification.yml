@@ -1,0 +1,43 @@
+name: Backend verification
+
+on:
+  push:
+    branches:
+      - backend-stabilization
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout backend stabilization branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        id: install
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm test
+
+      - name: TypeScript typecheck
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+
+      - name: ESLint
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run lint
+
+      - name: Production compilation (without database migrations)
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run build:dev
