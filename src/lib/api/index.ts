@@ -19,6 +19,7 @@
 export type { Result, Ok, Fail } from "./_run";
 
 export { getSessionContext, getDashboard } from "./session";
+export { getOnboardingStatus, registerCompany } from "./onboarding";
 
 export {
   listShifts,
