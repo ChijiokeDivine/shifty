@@ -25,7 +25,7 @@ export async function registerCompany(userId: string, input: RegisterCompanyInpu
     throw new ConstraintError(["Your name must be between 2 and 120 characters."]);
   if (locationName.length > 100 || positionName.length > 100)
     throw new ConstraintError(["Location and position names must be under 100 characters."]);
-  if (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     throw new ConstraintError(["Enter a valid company email address."]);
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
