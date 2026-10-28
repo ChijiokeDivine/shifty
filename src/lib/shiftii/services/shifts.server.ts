@@ -1,5 +1,5 @@
 import { nid } from "../ids";
-import { bool, dateStr, iso, num, q, str, strOrNull } from "../db.server";
+import { bool, dateStr, iso, num, q, str, strOrNull, withTransaction } from "../db.server";
 import { assertManager } from "../context.server";
 import { audit } from "../audit.server";
 import { managerIds, notify } from "../notify.server";
@@ -112,46 +112,70 @@ export async function createShift(
   },
 ): Promise<Shift> {
   assertManager(ctx);
-  const id = nid("sft");
-  const assigned = Boolean(input.employeeId);
-  const status = assigned ? "ASSIGNED" : input.openForClaim ? "OPEN" : "DRAFT";
-  await q(
-    `insert into shifts (
-       id, organization_id, roster_id, location_id, position_id, employee_id,
-       date, start_at, end_at, break_minutes, notes, status, is_open_for_claim, created_by_id
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [
-      id,
-      ctx.organization.id,
-      input.rosterId,
-      input.locationId,
-      input.positionId,
-      input.employeeId ?? null,
-      input.date,
-      input.startAt,
-      input.endAt,
-      input.breakMinutes ?? ctx.organization.defaultBreakMinutes,
-      input.notes ?? null,
-      status,
-      Boolean(input.openForClaim) && !assigned,
-      ctx.membership.id,
-    ],
-  );
-  if (assigned && input.employeeId) {
-    const check = await evaluateAssignment(ctx, input.employeeId, id);
-    if (!check.ok) {
-      await q(`delete from shifts where id = $1`, [id]);
-      throw new ConstraintError(check.violations);
-    }
+  if (
+    !Number.isFinite(Date.parse(input.startAt)) ||
+    !Number.isFinite(Date.parse(input.endAt)) ||
+    Date.parse(input.endAt) <= Date.parse(input.startAt) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.date)
+  ) {
+    throw new ConstraintError(["Shift must have a valid date and an end time after its start."]);
   }
-  await audit({
-    ctx,
-    action: "SHIFT_CREATED",
-    entityType: "shift",
-    entityId: id,
-    after: { locationId: input.locationId, date: input.date, employeeId: input.employeeId ?? null },
+  const breakMinutes = input.breakMinutes ?? ctx.organization.defaultBreakMinutes;
+  const durationMinutes = (Date.parse(input.endAt) - Date.parse(input.startAt)) / 60_000;
+  if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || breakMinutes >= durationMinutes) {
+    throw new ConstraintError(["Break must be a nonnegative number of minutes shorter than the shift."]);
+  }
+  return withTransaction(async () => {
+    // The roster, unit, and position must all belong to the caller's organization.
+    const roster = await q<{ id: string }>(
+      `select id from rosters where id = $1 and organization_id = $2 and status = 'DRAFT'
+         and start_date <= $3 and end_date >= $3 and (location_id is null or location_id = $4)`,
+      [input.rosterId, ctx.organization.id, input.date, input.locationId],
+    );
+    const location = await q<{ id: string }>(
+      `select id from locations where id = $1 and organization_id = $2 and is_active = true`,
+      [input.locationId, ctx.organization.id],
+    );
+    const position = await q<{ id: string }>(
+      `select id from positions where id = $1 and organization_id = $2 and is_active = true`,
+      [input.positionId, ctx.organization.id],
+    );
+    if (!roster.length || !location.length || !position.length) {
+      throw new ConstraintError(["Roster, location, or position is invalid for this organization and date."]);
+    }
+    if (input.employeeId) {
+      // Serialize assignments for a staff member across manager requests.
+      const members = await q<{ id: string }>(
+        `select id from memberships where id = $1 and organization_id = $2 for update`,
+        [input.employeeId, ctx.organization.id],
+      );
+      if (!members.length) throw new NotFoundError("Staff member not found.");
+    }
+    const id = nid("sft");
+    const assigned = Boolean(input.employeeId);
+    const status = assigned ? "ASSIGNED" : input.openForClaim ? "OPEN" : "DRAFT";
+    await q(
+      `insert into shifts (
+         id, organization_id, roster_id, location_id, position_id, employee_id,
+         date, start_at, end_at, break_minutes, notes, status, is_open_for_claim, created_by_id
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [id, ctx.organization.id, input.rosterId, input.locationId, input.positionId,
+       input.employeeId ?? null, input.date, input.startAt, input.endAt, breakMinutes,
+       input.notes ?? null, status, Boolean(input.openForClaim) && !assigned, ctx.membership.id],
+    );
+    if (input.employeeId) {
+      const check = await evaluateAssignment(ctx, input.employeeId, id);
+      if (!check.ok) throw new ConstraintError(check.violations);
+    }
+    await audit({
+      ctx,
+      action: "SHIFT_CREATED",
+      entityType: "shift",
+      entityId: id,
+      after: { locationId: input.locationId, date: input.date, employeeId: input.employeeId ?? null },
+    });
+    return getShift(ctx, id);
   });
-  return getShift(ctx, id);
 }
 
 export async function assignShift(
@@ -159,43 +183,50 @@ export async function assignShift(
   input: { shiftId: string; membershipId: string; expectedVersion?: number },
 ): Promise<Shift> {
   assertManager(ctx);
-  const current = await getShift(ctx, input.shiftId);
-  if (current.status === "CANCELLED") throw new ConflictError("Shift is cancelled.");
-  if (input.expectedVersion != null && current.version !== input.expectedVersion) {
-    throw new ConflictError("Shift was updated by someone else. Reload and retry.");
-  }
-  const check = await evaluateAssignment(ctx, input.membershipId, input.shiftId);
-  if (!check.ok) throw new ConstraintError(check.violations);
-  // Check the version atomically in SQL. Another manager may update the
-  // shift after the earlier read but before this write.
-  const updated = await q<{ id: string }>(
-    `update shifts
-        set employee_id = $1, status = 'ASSIGNED', is_open_for_claim = false,
-            version = version + 1, updated_at = now()
-      where id = $2 and organization_id = $3 and version = $4
-      returning id`,
-    [input.membershipId, input.shiftId, ctx.organization.id, current.version],
-  );
-  if (!updated.length) {
-    throw new ConflictError("Shift was updated by someone else. Reload and retry.");
-  }
-  await audit({
-    ctx,
-    action: "SHIFT_ASSIGNED",
-    entityType: "shift",
-    entityId: input.shiftId,
-    before: { employeeId: current.employeeId },
-    after: { employeeId: input.membershipId },
+  return withTransaction(async () => {
+    // Lock the staff row before eligibility evaluation. Otherwise two requests
+    // could both pass overlap/rest checks before either writes an assignment.
+    const members = await q<{ id: string }>(
+      `select id from memberships where id = $1 and organization_id = $2 for update`,
+      [input.membershipId, ctx.organization.id],
+    );
+    if (!members.length) throw new NotFoundError("Staff member not found.");
+    const current = await getShift(ctx, input.shiftId);
+    if (current.status === "CANCELLED") throw new ConflictError("Shift is cancelled.");
+    if (input.expectedVersion != null && current.version !== input.expectedVersion) {
+      throw new ConflictError("Shift was updated by someone else. Reload and retry.");
+    }
+    const check = await evaluateAssignment(ctx, input.membershipId, input.shiftId);
+    if (!check.ok) throw new ConstraintError(check.violations);
+    const updated = await q<{ id: string }>(
+      `update shifts
+          set employee_id = $1, status = 'ASSIGNED', is_open_for_claim = false,
+              version = version + 1, updated_at = now()
+        where id = $2 and organization_id = $3 and version = $4 and status <> 'CANCELLED'
+        returning id`,
+      [input.membershipId, input.shiftId, ctx.organization.id, current.version],
+    );
+    if (!updated.length) {
+      throw new ConflictError("Shift was updated by someone else. Reload and retry.");
+    }
+    await audit({
+      ctx,
+      action: "SHIFT_ASSIGNED",
+      entityType: "shift",
+      entityId: input.shiftId,
+      before: { employeeId: current.employeeId },
+      after: { employeeId: input.membershipId },
+    });
+    await notify({
+      organizationId: ctx.organization.id,
+      recipientIds: [input.membershipId],
+      type: "SHIFT_ASSIGNED",
+      title: "Shift assigned",
+      message: `You were assigned ${current.locationName ?? "a unit"} on ${current.date}.`,
+      link: "/app?view=me",
+    });
+    return getShift(ctx, input.shiftId);
   });
-  await notify({
-    organizationId: ctx.organization.id,
-    recipientIds: [input.membershipId],
-    type: "SHIFT_ASSIGNED",
-    title: "Shift assigned",
-    message: `You were assigned ${current.locationName ?? "a unit"} on ${current.date}.`,
-    link: "/app?view=me",
-  });
-  return getShift(ctx, input.shiftId);
 }
 
 export async function unassignShift(

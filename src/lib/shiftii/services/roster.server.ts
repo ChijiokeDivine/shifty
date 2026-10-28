@@ -1,7 +1,8 @@
 import { nid } from "../ids";
-import { dateStr, q, str } from "../db.server";
+import { dateStr, q, str, withTransaction } from "../db.server";
 import { assertManager } from "../context.server";
 import { audit } from "../audit.server";
+import { ConflictError, ConstraintError, NotFoundError } from "../errors";
 import { managerIds, notify } from "../notify.server";
 import { evaluateAssignment } from "../eligibility.server";
 import { listShifts, assignShift } from "./shifts.server";
@@ -22,14 +23,65 @@ export async function listRosters(ctx: SessionContext) {
   }));
 }
 
+/** Create a draft roster for an organization, optionally scoped to a unit. */
+export async function createRoster(
+  ctx: SessionContext,
+  input: { name: string; startDate: string; endDate: string; locationId?: string | null },
+) {
+  assertManager(ctx);
+  const name = input.name.trim();
+  if (!name || name.length > 120) {
+    throw new ConstraintError(["Roster name must contain 1 to 120 characters."]);
+  }
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  const validDate = (date: string): boolean =>
+    datePattern.test(date) && !Number.isNaN(Date.parse(`${date}T12:00:00Z`)) &&
+    new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) === date;
+  if (!validDate(input.startDate) || !validDate(input.endDate) || input.endDate < input.startDate) {
+    throw new ConstraintError(["Roster dates must be valid and the end date must not precede the start date."]);
+  }
+  const id = nid("rst");
+  return withTransaction(async () => {
+    if (input.locationId) {
+      const location = await q<{ id: string }>(
+        `select id from locations where id = $1 and organization_id = $2 and is_active = true`,
+        [input.locationId, ctx.organization.id],
+      );
+      if (!location.length) throw new NotFoundError("Location not found in this organization.");
+    }
+    const rows = await q<{ id: string }>(
+      `insert into rosters (
+         id, organization_id, location_id, name, start_date, end_date,
+         status, created_by_id
+       ) values ($1,$2,$3,$4,$5,$6,'DRAFT',$7) returning id`,
+      [id, ctx.organization.id, input.locationId ?? null, name,
+       input.startDate, input.endDate, ctx.membership.id],
+    );
+    if (!rows.length) throw new ConflictError("Could not create roster.");
+    await audit({
+      ctx, action: "ROSTER_CREATED", entityType: "roster", entityId: id,
+      after: { name, startDate: input.startDate, endDate: input.endDate,
+               locationId: input.locationId ?? null },
+    });
+    return {
+      id, name, startDate: input.startDate, endDate: input.endDate,
+      status: "DRAFT" as const, locationId: input.locationId ?? null,
+    };
+  });
+}
+
 export async function publishRoster(ctx: SessionContext, rosterId: string) {
   assertManager(ctx);
-  await q(
+  const published = await q<{ id: string }>(
     `update rosters
         set status = 'PUBLISHED', published_by_id = $1, published_at = now(), updated_at = now()
-      where id = $2 and organization_id = $3`,
+      where id = $2 and organization_id = $3 and status = 'DRAFT'
+      returning id`,
     [ctx.membership.id, rosterId, ctx.organization.id],
   );
+  if (!published.length) {
+    throw new ConflictError("Roster not found or it has already been published or archived.");
+  }
   const staff = await q<{ id: string }>(
     `select id from memberships where organization_id = $1 and status = 'ACTIVE' and is_synthetic = false`,
     [ctx.organization.id],
