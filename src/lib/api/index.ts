@@ -28,6 +28,7 @@ export {
   createShift,
   assignShift,
   rescheduleShift,
+  moveAndAssignShift,
   unassignShift,
   cancelShift,
   setOpenForClaim,
