@@ -166,13 +166,19 @@ export async function assignShift(
   }
   const check = await evaluateAssignment(ctx, input.membershipId, input.shiftId);
   if (!check.ok) throw new ConstraintError(check.violations);
-  await q(
+  // Check the version atomically in SQL. Another manager may update the
+  // shift after the earlier read but before this write.
+  const updated = await q<{ id: string }>(
     `update shifts
         set employee_id = $1, status = 'ASSIGNED', is_open_for_claim = false,
             version = version + 1, updated_at = now()
-      where id = $2 and organization_id = $3`,
-    [input.membershipId, input.shiftId, ctx.organization.id],
+      where id = $2 and organization_id = $3 and version = $4
+      returning id`,
+    [input.membershipId, input.shiftId, ctx.organization.id, current.version],
   );
+  if (!updated.length) {
+    throw new ConflictError("Shift was updated by someone else. Reload and retry.");
+  }
   await audit({
     ctx,
     action: "SHIFT_ASSIGNED",
