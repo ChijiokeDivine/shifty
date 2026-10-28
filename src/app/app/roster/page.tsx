@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, Loader2, Plus, RefreshCw, Send, Users, X } from "lucide-react";
-import { createRoster, createShift, listRosters, listShifts, publishRoster, assignShift, unassignShift, rescheduleShift, cancelShift, setOpenForClaim } from "@/lib/api/roster";
+import { createRoster, createShift, listRosters, listShifts, publishRoster, assignShift, unassignShift, rescheduleShift, moveAndAssignShift, cancelShift, setOpenForClaim } from "@/lib/api/roster";
 import { listStaff, listLocations, listPositions } from "@/lib/api/people";
 import { getSessionContext } from "@/lib/api/session";
 import { addCalendarDays, calendarDateInZone, shiftWindowFromClock, startOfCalendarWeek, timeOfDayInZone } from "@/lib/shiftii/calendar";
@@ -186,16 +186,11 @@ export default function RosterCalendar() {
   async function moveOrAssign(shift: Shift, date: string, memberId?: string) {
     if (!selected || selected.status !== "DRAFT" || !canManage) return;
     await doWork(async () => {
-      let current = shift;
-      if (date !== shift.date) {
-        const updated = await rescheduleShift({ shiftId: shift.id, date, expectedVersion: shift.version });
-        if (!updated.ok) throw new Error(updated.error);
-        current = updated.data;
-      }
-      if (memberId && memberId !== current.employeeId) {
-        const assigned = await assignShift({ shiftId: current.id, membershipId: memberId, expectedVersion: current.version });
-        if (!assigned.ok) throw new Error(assigned.error);
-      }
+      const result = await moveAndAssignShift({
+        shiftId: shift.id, date, expectedVersion: shift.version,
+        membershipId: memberId && memberId !== shift.employeeId ? memberId : undefined,
+      });
+      if (!result.ok) throw new Error(result.error);
     }, "Shift moved. Scheduling rules checked.");
   }
 
