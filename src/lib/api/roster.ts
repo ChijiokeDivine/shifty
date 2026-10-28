@@ -47,6 +47,14 @@ export async function rescheduleShift(input: { shiftId: string; date: string; ex
   });
 }
 
+export async function moveAndAssignShift(input: { shiftId: string; date: string; expectedVersion: number; membershipId?: string }) {
+  const userId = await requireAuthedUserId();
+  return withOrg(userId, async (ctx) => {
+    const { moveAndAssignShift } = await import("@/lib/shiftii/services/shifts.server");
+    return moveAndAssignShift(ctx, input);
+  });
+}
+
 export async function unassignShift(input: { shiftId: string; openForClaim?: boolean }) {
   const data = input;
   const userId = await requireAuthedUserId();
