@@ -1,5 +1,5 @@
 import { nid } from "../ids";
-import { dateStr, iso, q, qOne, str, strOrNull } from "../db.server";
+import { iso, q, qOne, str, strOrNull, withTransaction } from "../db.server";
 import { assertManager } from "../context.server";
 import { audit } from "../audit.server";
 import { managerIds, notify } from "../notify.server";
@@ -58,53 +58,60 @@ export async function claimOpenShift(
   ctx: SessionContext,
   input: { shiftId: string; note?: string },
 ): Promise<ShiftClaim> {
-  const shift = await getShift(ctx, input.shiftId);
-  if (shift.status === "CANCELLED") throw new ConflictError("Shift is cancelled.");
-  if (!shift.isOpenForClaim || shift.employeeId) {
-    throw new ConflictError("This shift is not open for claim.");
-  }
-  const existing = await qOne(
-    `select id from shift_claims
-      where shift_id = $1 and membership_id = $2 and status = 'PENDING'`,
-    [input.shiftId, ctx.membership.id],
-  );
-  if (existing) throw new ConflictError("You already have a pending claim on this shift.");
-
-  const check = await evaluateAssignment(ctx, ctx.membership.id, input.shiftId);
-  if (!check.ok) throw new ConstraintError(check.violations);
-
-  const auto = ctx.organization.claimApprovalMode === "AUTO";
-  const id = nid("clm");
-  await q(
-    `insert into shift_claims (
-       id, organization_id, shift_id, membership_id, type, status, note
-     ) values ($1,$2,$3,$4,'CLAIM',$5,$6)`,
-    [id, ctx.organization.id, input.shiftId, ctx.membership.id, auto ? "APPROVED" : "PENDING", input.note ?? null],
-  );
-
-  if (auto) {
-    await applyClaim(ctx, id, "APPROVED");
-  } else {
-    await notify({
-      organizationId: ctx.organization.id,
-      recipientIds: await managerIds(ctx.organization.id),
-      type: "CLAIM_SUBMITTED",
-      title: "Open-shift claim",
-      message: `${ctx.membership.displayName} claimed ${shift.locationName ?? "a unit"} on ${shift.date}.`,
-      link: "/app?view=claims",
+  return withTransaction(async () => {
+    const locked = await q<{ id: string }>(
+      `select id from memberships where id = $1 and organization_id = $2 and status = 'ACTIVE' for update`,
+      [ctx.membership.id, ctx.organization.id],
+    );
+    if (!locked.length) throw new ConflictError("Your staff membership is not active.");
+    const shift = await getShift(ctx, input.shiftId);
+    if (shift.status === "CANCELLED") throw new ConflictError("Shift is cancelled.");
+    if (!shift.isOpenForClaim || shift.employeeId) {
+      throw new ConflictError("This shift is not open for claim.");
+    }
+    const existing = await qOne(
+      `select id from shift_claims
+        where shift_id = $1 and membership_id = $2 and status in ('PENDING', 'APPROVED') and type = 'CLAIM'`,
+      [input.shiftId, ctx.membership.id],
+    );
+    if (existing) throw new ConflictError("You already have a pending claim on this shift.");
+  
+    const check = await evaluateAssignment(ctx, ctx.membership.id, input.shiftId);
+    if (!check.ok) throw new ConstraintError(check.violations);
+  
+    const auto = ctx.organization.claimApprovalMode === "AUTO";
+    const id = nid("clm");
+    await q(
+      `insert into shift_claims (
+         id, organization_id, shift_id, membership_id, type, status, note
+       ) values ($1,$2,$3,$4,'CLAIM',$5,$6)`,
+      [id, ctx.organization.id, input.shiftId, ctx.membership.id, auto ? "APPROVED" : "PENDING", input.note ?? null],
+    );
+  
+    if (auto) {
+      await applyClaim(ctx, id, "APPROVED");
+    } else {
+      await notify({
+        organizationId: ctx.organization.id,
+        recipientIds: await managerIds(ctx.organization.id),
+        type: "CLAIM_SUBMITTED",
+        title: "Open-shift claim",
+        message: `${ctx.membership.displayName} claimed ${shift.locationName ?? "a unit"} on ${shift.date}.`,
+        link: "/app?view=claims",
+      });
+    }
+    await audit({
+      ctx,
+      action: auto ? "CLAIM_AUTO_APPROVED" : "CLAIM_SUBMITTED",
+      entityType: "shift_claim",
+      entityId: id,
+      after: { shiftId: input.shiftId, auto },
     });
-  }
-  await audit({
-    ctx,
-    action: auto ? "CLAIM_AUTO_APPROVED" : "CLAIM_SUBMITTED",
-    entityType: "shift_claim",
-    entityId: id,
-    after: { shiftId: input.shiftId, auto },
+    const rows = await listClaims(ctx, { mine: true });
+    const found = rows.find((c) => c.id === id);
+    if (!found) throw new AppError("Claim created but could not be reloaded.");
+    return found;
   });
-  const rows = await listClaims(ctx, { mine: true });
-  const found = rows.find((c) => c.id === id);
-  if (!found) throw new AppError("Claim created but could not be reloaded.");
-  return found;
 }
 
 export async function releaseAssignedShift(
@@ -151,7 +158,20 @@ export async function reviewClaim(
     [input.claimId, ctx.organization.id],
   );
   if (!row) throw new NotFoundError("Claim not found.");
-  if (str(row.status) !== "PENDING") throw new ConflictError("Claim is no longer pending.");
+  return withTransaction(async () => {
+    const locked = await q<{ id: string }>(
+      `select id from memberships where id = $1 and organization_id = $2 for update`,
+      [str(row.membership_id), ctx.organization.id],
+    );
+    if (!locked.length) throw new NotFoundError("Staff member not found.");
+    const latest = await qOne<Record<string, unknown>>(
+      `select * from shift_claims where id = $1 and organization_id = $2 for update`,
+      [input.claimId, ctx.organization.id],
+    );
+    if (!latest || str(latest.status) !== "PENDING") {
+      throw new ConflictError("Claim is no longer pending.");
+    }
+
   const status: ShiftClaimStatus = input.approve ? "APPROVED" : "REJECTED";
   if (input.approve) {
     if (str(row.type) === "CLAIM") {
@@ -163,8 +183,9 @@ export async function reviewClaim(
     await q(
       `update shift_claims
           set status = 'REJECTED', reviewed_by_id = $1, reviewed_at = now(), updated_at = now()
-        where id = $2`,
-      [ctx.membership.id, input.claimId],
+        where id = $2 and organization_id = $3 and status = 'PENDING'
+        returning id`,
+      [ctx.membership.id, input.claimId, ctx.organization.id],
     );
   }
   await notify({
@@ -186,6 +207,7 @@ export async function reviewClaim(
   const found = all.find((c) => c.id === input.claimId);
   if (!found) throw new NotFoundError("Claim not found after review.");
   return found;
+  });
 }
 
 export async function cancelClaim(ctx: SessionContext, claimId: string): Promise<void> {
@@ -206,33 +228,47 @@ export async function cancelClaim(ctx: SessionContext, claimId: string): Promise
 }
 
 async function applyClaim(ctx: SessionContext, claimId: string, status: ShiftClaimStatus) {
+  // Call inside withTransaction with the affected staff member locked first.
   const row = await qOne<Record<string, unknown>>(
-    `select * from shift_claims where id = $1`,
-    [claimId],
+    `select * from shift_claims where id = $1 and organization_id = $2 for update`,
+    [claimId, ctx.organization.id],
   );
   if (!row) throw new NotFoundError("Claim not found.");
-  if (str(row.type) === "CLAIM") {
-    await q(
-      `update shifts
-          set employee_id = $1, status = 'ASSIGNED', is_open_for_claim = false,
-              version = version + 1, updated_at = now()
-        where id = $2 and organization_id = $3 and employee_id is null`,
-      [str(row.membership_id), str(row.shift_id), ctx.organization.id],
-    );
-  } else {
-    await q(
-      `update shifts
-          set employee_id = null, status = 'OPEN', is_open_for_claim = true,
-              version = version + 1, updated_at = now()
-        where id = $1 and organization_id = $2 and employee_id = $3`,
-      [str(row.shift_id), ctx.organization.id, str(row.membership_id)],
-    );
+  if (!["PENDING", "APPROVED"].includes(str(row.status))) {
+    throw new ConflictError("Claim is no longer actionable.");
   }
-  await q(
+  const memberId = str(row.membership_id);
+  const shiftId = str(row.shift_id);
+  if (str(row.type) === "CLAIM") {
+    const check = await evaluateAssignment(ctx, memberId, shiftId);
+    if (!check.ok) throw new ConstraintError(check.violations);
+  }
+  const assigned = str(row.type) === "CLAIM";
+  const changed = await q<{ id: string }>(
+    assigned
+      ? `update shifts
+           set employee_id = $1, status = 'ASSIGNED', is_open_for_claim = false,
+               version = version + 1, updated_at = now()
+         where id = $2 and organization_id = $3 and employee_id is null
+           and status = 'OPEN' and is_open_for_claim = true
+         returning id`
+      : `update shifts
+           set employee_id = null, status = 'OPEN', is_open_for_claim = true,
+               version = version + 1, updated_at = now()
+         where id = $2 and organization_id = $3 and employee_id = $1
+           and status = 'ASSIGNED'
+         returning id`,
+    [memberId, shiftId, ctx.organization.id],
+  );
+  if (!changed.length) {
+    throw new ConflictError("Shift is no longer available for this claim. Reload and retry.");
+  }
+  const updated = await q<{ id: string }>(
     `update shift_claims
         set status = $1, reviewed_by_id = $2, reviewed_at = now(), updated_at = now()
-      where id = $3`,
-    [status, ctx.membership.id, claimId],
+      where id = $3 and organization_id = $4 and status in ('PENDING', 'APPROVED')
+      returning id`,
+    [status, ctx.membership.id, claimId, ctx.organization.id],
   );
-  void dateStr;
+  if (!updated.length) throw new ConflictError("Claim was already processed.");
 }
