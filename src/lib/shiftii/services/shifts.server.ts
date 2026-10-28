@@ -1,4 +1,5 @@
 import { nid } from "../ids";
+import { moveShiftWindow, shiftWindowFromClock } from "../calendar";
 import { bool, dateStr, iso, num, q, str, strOrNull, withTransaction } from "../db.server";
 import { assertManager } from "../context.server";
 import { audit } from "../audit.server";
@@ -316,4 +317,56 @@ export async function setOpenForClaim(
     entityId: input.shiftId,
   });
   return getShift(ctx, input.shiftId);
+}
+
+/** Change a draft shift's start/end times and/or calendar date atomically. */
+export async function rescheduleShift(
+  ctx: SessionContext,
+  input: { shiftId: string; date: string; expectedVersion: number; startTime?: string; endTime?: string },
+): Promise<Shift> {
+  assertManager(ctx);
+  return withTransaction(async () => {
+    const old = await getShift(ctx, input.shiftId);
+    if (old.version !== input.expectedVersion) throw new ConflictError("Shift has changed. Refresh the roster.");
+    const roster = await q<{ id: string }>(
+      `select id from rosters where id = $1 and organization_id = $2 and status = 'DRAFT'
+         and start_date <= $3 and end_date >= $3
+         and (location_id is null or location_id = $4) for update`,
+      [old.rosterId, ctx.organization.id, input.date, old.locationId],
+    );
+    if (!roster.length || old.status === "CANCELLED") throw new ConflictError("Only active shifts on draft rosters can be rescheduled.");
+    let window: { startAt: string; endAt: string };
+    try {
+      window = input.startTime && input.endTime
+        ? shiftWindowFromClock(input.date, input.startTime, input.endTime, ctx.organization.timezone)
+        : moveShiftWindow(old.startAt, old.endAt, input.date, ctx.organization.timezone);
+    } catch (err) {
+      throw new ConstraintError([err instanceof Error ? err.message : "Invalid shift times."]);
+    }
+    if ((Date.parse(window.endAt) - Date.parse(window.startAt)) / 60000 <= old.breakMinutes) {
+      throw new ConstraintError(["Shift must be longer than its break."]);
+    }
+    if (old.employeeId) {
+      const employees = await q<{ id: string }>(
+        `select id from memberships where id = $1 and organization_id = $2 for update`,
+        [old.employeeId, ctx.organization.id],
+      );
+      if (!employees.length) throw new ConflictError("Assigned employee is unavailable.");
+    }
+    const changed = await q<{ id: string }>(
+      `update shifts set date = $1, start_at = $2, end_at = $3,
+           version = version + 1, updated_at = now()
+         where id = $4 and organization_id = $5 and version = $6 returning id`,
+      [input.date, window.startAt, window.endAt, input.shiftId, ctx.organization.id, input.expectedVersion],
+    );
+    if (!changed.length) throw new ConflictError("Shift changed while saving. Refresh and retry.");
+    if (old.employeeId) {
+      const check = await evaluateAssignment(ctx, old.employeeId, input.shiftId);
+      if (!check.ok) throw new ConstraintError(check.violations);
+    }
+    await audit({ ctx, action: "SHIFT_RESCHEDULED", entityType: "shift", entityId: input.shiftId,
+      before: { date: old.date, startAt: old.startAt, endAt: old.endAt },
+      after: { date: input.date, ...window } });
+    return getShift(ctx, input.shiftId);
+  });
 }
