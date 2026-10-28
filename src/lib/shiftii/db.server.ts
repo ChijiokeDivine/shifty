@@ -1,10 +1,22 @@
-import { getSql } from "@/lib/db";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { getSql, type Sql } from "@/lib/db";
+
+// Context-local transaction, preventing unrelated requests from sharing a client.
+const txScope = new AsyncLocalStorage<Sql>();
+
+export async function withTransaction<T>(work: () => Promise<T>): Promise<T> {
+  const existing = txScope.getStore();
+  if (existing) return work();
+  const sql = await getSql();
+  return sql.transaction((tx) => txScope.run(tx, work));
+}
+
 
 export async function q<T = Record<string, unknown>>(
   text: string,
   params: unknown[] = [],
 ): Promise<T[]> {
-  const sql = await getSql();
+  const sql = txScope.getStore() ?? (await getSql());
   return sql.query<T>(text, params);
 }
 
