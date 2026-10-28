@@ -2,6 +2,7 @@ import { nid } from "../ids";
 import { dateStr, q, str } from "../db.server";
 import { assertManager } from "../context.server";
 import { audit } from "../audit.server";
+import { ConflictError } from "../errors";
 import { managerIds, notify } from "../notify.server";
 import { evaluateAssignment } from "../eligibility.server";
 import { listShifts, assignShift } from "./shifts.server";
@@ -24,12 +25,16 @@ export async function listRosters(ctx: SessionContext) {
 
 export async function publishRoster(ctx: SessionContext, rosterId: string) {
   assertManager(ctx);
-  await q(
+  const published = await q<{ id: string }>(
     `update rosters
         set status = 'PUBLISHED', published_by_id = $1, published_at = now(), updated_at = now()
-      where id = $2 and organization_id = $3`,
+      where id = $2 and organization_id = $3 and status = 'DRAFT'
+      returning id`,
     [ctx.membership.id, rosterId, ctx.organization.id],
   );
+  if (!published.length) {
+    throw new ConflictError("Roster not found or it has already been published or archived.");
+  }
   const staff = await q<{ id: string }>(
     `select id from memberships where organization_id = $1 and status = 'ACTIVE' and is_synthetic = false`,
     [ctx.organization.id],
