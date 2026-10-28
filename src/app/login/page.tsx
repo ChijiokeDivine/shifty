@@ -40,10 +40,10 @@ function LoginFields() {
       const result = await authClient.signIn.email({
         email: email.trim().toLowerCase(),
         password,
-        callbackURL: "/app",
+        callbackURL: nextDestination(),
       });
       if (result.error) setError(result.error.message ?? "Could not sign in.");
-      else window.location.assign("/app");
+      else window.location.assign(nextDestination());
     } catch {
       setError("Sign-in failed. Please try again.");
     } finally {
@@ -64,4 +64,11 @@ function LoginFields() {
       <div className="grid gap-2">{GROK_PROVIDERS.map(provider=><button key={provider.providerId} type="button" onClick={()=>{void signIn(provider.providerId,{callbackURL:"/app"}).catch(()=>setError("Provider sign-in failed."));}} className="rounded-xl border border-[#D8E5DB] px-4 py-3 text-sm font-medium hover:bg-[#F5F9F5]">Continue with {provider.label}</button>)}</div>
     </div>}
   </div>;
+}
+
+function nextDestination(): string {
+  if (typeof window === "undefined") return "/app";
+  const token = new URLSearchParams(window.location.search).get("invite");
+  // Only allow server-issued invite token destinations, not arbitrary URLs.
+  return token && /^[a-f0-9]{64}$/.test(token) ? `/invite/${token}` : "/app";
 }
