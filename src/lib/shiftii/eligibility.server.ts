@@ -1,6 +1,7 @@
 import { checkAssignment, type ConstraintInput } from "@/lib/local-ml/constraints";
 import type { AssignmentCheck, StaffPreferences } from "./types";
 import { addDays } from "./time";
+import { minutesOfDayInZone } from "./local-time";
 import { bool, dateStr, iso, json, num, q, str } from "./db.server";
 import { NotFoundError } from "./errors";
 import type { SessionContext } from "./types";
@@ -70,7 +71,7 @@ export async function loadConstraintInput(opts: {
   );
 
   const shiftDate = dateStr(s.date);
-  const startMin = minutesOfDay(iso(s.start_at), opts.ctx.organization.timezone);
+  const startMin = minutesOfDayInZone(iso(s.start_at), opts.ctx.organization.timezone);
   const blocked = await isAvailabilityBlocked(opts.membershipId, shiftDate, startMin);
 
   const input: ConstraintInput = {
@@ -164,11 +165,6 @@ function minuteCovers(from: number, to: number, minute: number): boolean {
   if (from === to) return true;
   if (from < to) return minute >= from && minute < to;
   return minute >= from || minute < to;
-}
-
-function minutesOfDay(isoTs: string, _tz: string): number {
-  const d = new Date(isoTs);
-  return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
 export { addDays };
