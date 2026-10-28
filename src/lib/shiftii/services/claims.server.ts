@@ -118,34 +118,41 @@ export async function releaseAssignedShift(
   ctx: SessionContext,
   input: { shiftId: string; note?: string },
 ): Promise<ShiftClaim> {
-  const shift = await getShift(ctx, input.shiftId);
-  if (shift.employeeId !== ctx.membership.id) {
-    throw new ConflictError("You can only release a shift assigned to you.");
-  }
-  const id = nid("clm");
-  const auto = ctx.organization.claimApprovalMode === "AUTO";
-  await q(
-    `insert into shift_claims (
-       id, organization_id, shift_id, membership_id, type, status, note
-     ) values ($1,$2,$3,$4,'RELEASE',$5,$6)`,
-    [id, ctx.organization.id, input.shiftId, ctx.membership.id, auto ? "APPROVED" : "PENDING", input.note ?? null],
-  );
-  if (auto) {
-    await applyClaim(ctx, id, "APPROVED");
-  } else {
-    await notify({
-      organizationId: ctx.organization.id,
-      recipientIds: await managerIds(ctx.organization.id),
-      type: "CLAIM_SUBMITTED",
-      title: "Shift release requested",
-      message: `${ctx.membership.displayName} asked to release ${shift.date} ${shift.locationName ?? ""}.`,
-    });
-  }
-  await audit({ ctx, action: "RELEASE_SUBMITTED", entityType: "shift_claim", entityId: id });
-  const rows = await listClaims(ctx, { mine: true });
-  const found = rows.find((c) => c.id === id);
-  if (!found) throw new AppError("Release created but could not be reloaded.");
-  return found;
+  return withTransaction(async () => {
+    const locked = await q<{ id: string }>(
+      `select id from memberships where id = $1 and organization_id = $2 for update`,
+      [ctx.membership.id, ctx.organization.id],
+    );
+    if (!locked.length) throw new ConflictError("Your staff membership is unavailable.");
+    const shift = await getShift(ctx, input.shiftId);
+    if (shift.employeeId !== ctx.membership.id) {
+      throw new ConflictError("You can only release a shift assigned to you.");
+    }
+    const id = nid("clm");
+    const auto = ctx.organization.claimApprovalMode === "AUTO";
+    await q(
+      `insert into shift_claims (
+         id, organization_id, shift_id, membership_id, type, status, note
+       ) values ($1,$2,$3,$4,'RELEASE',$5,$6)`,
+      [id, ctx.organization.id, input.shiftId, ctx.membership.id, auto ? "APPROVED" : "PENDING", input.note ?? null],
+    );
+    if (auto) {
+      await applyClaim(ctx, id, "APPROVED");
+    } else {
+      await notify({
+        organizationId: ctx.organization.id,
+        recipientIds: await managerIds(ctx.organization.id),
+        type: "CLAIM_SUBMITTED",
+        title: "Shift release requested",
+        message: `${ctx.membership.displayName} asked to release ${shift.date} ${shift.locationName ?? ""}.`,
+      });
+    }
+    await audit({ ctx, action: "RELEASE_SUBMITTED", entityType: "shift_claim", entityId: id });
+    const rows = await listClaims(ctx, { mine: true });
+    const found = rows.find((c) => c.id === id);
+    if (!found) throw new AppError("Release created but could not be reloaded.");
+    return found;
+  });
 }
 
 export async function reviewClaim(
@@ -211,20 +218,24 @@ export async function reviewClaim(
 }
 
 export async function cancelClaim(ctx: SessionContext, claimId: string): Promise<void> {
-  const row = await qOne<Record<string, unknown>>(
-    `select * from shift_claims where id = $1 and organization_id = $2`,
-    [claimId, ctx.organization.id],
-  );
-  if (!row) throw new NotFoundError("Claim not found.");
-  if (str(row.membership_id) !== ctx.membership.id) {
-    assertManager(ctx);
-  }
-  if (str(row.status) !== "PENDING") throw new ConflictError("Only pending claims can be cancelled.");
-  await q(
-    `update shift_claims set status = 'CANCELLED', updated_at = now() where id = $1`,
-    [claimId],
-  );
-  await audit({ ctx, action: "CLAIM_CANCELLED", entityType: "shift_claim", entityId: claimId });
+  return withTransaction(async () => {
+    const row = await qOne<Record<string, unknown>>(
+      `select * from shift_claims where id = $1 and organization_id = $2 for update`,
+      [claimId, ctx.organization.id],
+    );
+    if (!row) throw new NotFoundError("Claim not found.");
+    if (str(row.membership_id) !== ctx.membership.id) assertManager(ctx);
+    if (str(row.status) !== "PENDING") {
+      throw new ConflictError("Only pending claims can be cancelled.");
+    }
+    const changed = await q<{ id: string }>(
+      `update shift_claims set status = 'CANCELLED', updated_at = now()
+        where id = $1 and organization_id = $2 and status = 'PENDING' returning id`,
+      [claimId, ctx.organization.id],
+    );
+    if (!changed.length) throw new ConflictError("Claim is no longer pending.");
+    await audit({ ctx, action: "CLAIM_CANCELLED", entityType: "shift_claim", entityId: claimId });
+  });
 }
 
 async function applyClaim(ctx: SessionContext, claimId: string, status: ShiftClaimStatus) {
