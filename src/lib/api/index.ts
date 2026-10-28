@@ -29,6 +29,7 @@ export {
   cancelShift,
   setOpenForClaim,
   listRosters,
+  createRoster,
   generateFairRoster,
   publishRoster,
   listClaims,
@@ -87,6 +88,7 @@ export {
 export const API_CATALOG: { group: string; name: string; purpose: string }[] = [
   { group: "session", name: "getSessionContext", purpose: "Org + membership for the signed-in user (seeds hospital on first call)" },
   { group: "session", name: "getDashboard", purpose: "Tonight's coverage, gaps, pending work, fatigue, credentials, my shifts" },
+  { group: "roster", name: "createRoster", purpose: "Manager creates a new organization-scoped draft roster" },
   { group: "roster", name: "listShifts", purpose: "Filterable shift list (unit, date, mine, open claims)" },
   { group: "roster", name: "claimOpenShift", purpose: "Nurse claims an open shift; auto or manager approval" },
   { group: "roster", name: "releaseAssignedShift", purpose: "Ask to give up an assigned shift" },
