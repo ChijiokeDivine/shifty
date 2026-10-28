@@ -1,55 +1,67 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { GROK_PROVIDERS, authEnabled, signIn } from "@/lib/auth/client";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { authClient, authEnabled, GROK_PROVIDERS, signIn } from "@/lib/auth/client";
 import { SignInGate } from "@/lib/auth/gates";
 
 export default function LoginPage() {
   return (
-    <main className="min-h-screen bg-bg text-fg grid place-items-center px-5 py-12">
+    <main className="grid min-h-screen place-items-center bg-[#F5F9F5] px-6 py-12 text-[#18241E]">
       <div className="w-full max-w-md">
-        <p className="text-xs tracking-[0.22em] uppercase text-muted">
-          Shiftii
-        </p>
-        <h1 className="mt-3 font-display text-4xl font-medium tracking-tight text-balance">
-          Sign in to your unit.
-        </h1>
-        <p className="mt-3 text-muted text-pretty leading-relaxed">
-          Charge nurses and staff use the same hospital. Coverage, claims, and
-          fatigue scores stay inside your organization.
-        </p>
-        <div className="mt-8 rounded-xl border border-border bg-bg-elevated p-5">
-          <SignInGate fallback={<ProviderButtons />}>
-            <p className="text-sm text-muted">You are already signed in.</p>
-            <Link
-              href="/"
-              className="mt-4 flex h-11 items-center justify-center rounded-md bg-accent text-accent-fg font-medium"
-            >
-              Open hospital
-            </Link>
-          </SignInGate>
+        <Link href="/" className="text-2xl font-semibold text-[#176343]">shiftii<span className="text-[#58B785]">.</span></Link>
+        <div className="mt-9 rounded-3xl border border-[#E2EBE3] bg-white p-7 shadow-[0_25px_85px_rgba(20,61,39,0.07)] sm:p-10">
+          <h1 className="text-3xl font-semibold tracking-tight">Welcome back.</h1>
+          <p className="mt-3 text-sm leading-6 text-[#647368]">Sign in to your company workspace and get back to your team.</p>
+          <div className="mt-7">
+            <SignInGate fallback={<LoginFields/>}>
+              <p className="text-sm text-[#647368]">You are already signed in.</p>
+              <Link href="/app" className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#176343] px-5 py-3.5 font-semibold text-white">Open workspace <ArrowRight size={18}/></Link>
+            </SignInGate>
+          </div>
         </div>
+        <p className="mt-7 text-center text-sm text-[#647368]">New to Shiftii? <Link href="/signup" className="font-semibold text-[#176343] hover:underline">Create an account</Link></p>
       </div>
     </main>
   );
 }
 
-function ProviderButtons() {
-  if (!authEnabled) {
-    return <p className="text-sm text-muted">Sign-in is disabled.</p>;
+function LoginFields() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const result = await authClient.signIn.email({
+        email: email.trim().toLowerCase(),
+        password,
+        callbackURL: "/app",
+      });
+      if (result.error) setError(result.error.message ?? "Could not sign in.");
+      else window.location.assign("/app");
+    } catch {
+      setError("Sign-in failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
-  return (
-    <div className="flex flex-col gap-2">
-      {GROK_PROVIDERS.map((p) => (
-        <button
-          key={p.providerId}
-          type="button"
-          onClick={() => signIn(p.providerId, { callbackURL: "/" })}
-          className="h-11 w-full rounded-md border border-border bg-bg-subtle text-sm font-medium text-fg hover:bg-bg-elevated"
-        >
-          Continue with {p.label}
-        </button>
-      ))}
-    </div>
-  );
+  const field = "mt-2 w-full rounded-xl border border-[#D8E5DB] px-4 py-3 text-[#18241E] outline-none focus:border-[#248357] focus:ring-4 focus:ring-[#248357]/10";
+  if (!authEnabled) return <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Authentication is disabled in this environment.</p>;
+  return <div>
+    <form onSubmit={submit} className="space-y-5">
+      <div><label className="text-sm font-medium" htmlFor="login-email">Email address</label><input id="login-email" type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className={field}/></div>
+      <div><label className="text-sm font-medium" htmlFor="login-password">Password</label><input id="login-password" type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className={field}/></div>
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <button disabled={busy} type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#176343] px-5 py-3.5 font-semibold text-white hover:bg-[#10492F] disabled:opacity-60">{busy ? <><Loader2 size={18} className="animate-spin"/> Signing in...</> : <>Sign in <ArrowRight size={18}/></>}</button>
+    </form>
+    {GROK_PROVIDERS.length > 0 && <div className="mt-6">
+      <div className="relative mb-5 text-center text-xs text-[#8A9B8E]"><span className="bg-white px-3">or continue with</span></div>
+      <div className="grid gap-2">{GROK_PROVIDERS.map(provider=><button key={provider.providerId} type="button" onClick={()=>{void signIn(provider.providerId,{callbackURL:"/app"}).catch(()=>setError("Provider sign-in failed."));}} className="rounded-xl border border-[#D8E5DB] px-4 py-3 text-sm font-medium hover:bg-[#F5F9F5]">Continue with {provider.label}</button>)}</div>
+    </div>}
+  </div>;
 }
