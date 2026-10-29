@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, GripVertical, Plus, RefreshCw, Send, X } from "lucide-react";
-import { assignShift, createRoster, createShift, listRosters, listShifts, moveCalendarShift, publishRoster, rescheduleShift } from "@/lib/api/roster";
+import { createRoster, createShift, listRosters, listShifts, moveAndAssignShift, publishRoster } from "@/lib/api/roster";
 import { listLocations, listPositions, listStaff } from "@/lib/api/people";
 import { getSessionContext } from "@/lib/api/session";
 import { addCalendarDays, calendarDateInZone, shiftWindowFromClock, startOfCalendarWeek, timeOfDayInZone } from "@/lib/shiftii/calendar";
@@ -123,7 +123,7 @@ export default function RosterPage() {
     setDragId("");
     if(!shift||working||!selected||selected.status!=="DRAFT"||!canManage)return;
     await act(async()=>{
-      const r=await moveCalendarShift({shiftId:shift.id,date,expectedVersion:shift.version,membershipId:employeeId||undefined});
+      const r=await moveAndAssignShift({shiftId:shift.id,date,expectedVersion:shift.version,membershipId:employeeId||undefined});
       if(!r.ok)throw new Error(r.error);
     },"Shift updated. Scheduling constraints checked.");
   }
