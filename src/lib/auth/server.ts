@@ -30,12 +30,12 @@
  * a verified id via `@/lib/auth/middleware`.
  */
 import { betterAuth } from "better-auth";
-import { bearer, genericOAuth } from "better-auth/plugins";
+import { bearer, genericOAuth, emailOTP } from "better-auth/plugins";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
-import { isAuthEmailConfigured, sendAuthEmail } from "./transactional-email.server";
+import { isAuthEmailConfigured, sendAuthEmail, sendRegistrationOtp } from "./transactional-email.server";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
@@ -213,8 +213,8 @@ export const auth = betterAuth({
   // Third-party auth remains independent of transactional email.
   ...(emailAndPasswordEnabled ? {
     emailVerification: {
-      sendOnSignUp: isAuthEmailConfigured(),
-      sendOnSignIn: isAuthEmailConfigured(),
+      sendOnSignUp: false,
+      sendOnSignIn: false,
       sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
         await sendAuthEmail({
           to: user.email,
@@ -263,6 +263,21 @@ export const auth = betterAuth({
   },
 
   plugins: [
+    ...(emailAndPasswordEnabled ? [emailOTP({
+      otpLength: 6,
+      expiresIn: 600,
+      allowedAttempts: 5,
+      storeOTP: "hashed",
+      sendVerificationOnSignUp: isAuthEmailConfigured(),
+      overrideDefaultEmailVerification: true,
+      disableSignUp: true,
+      async sendVerificationOTP({ email, otp, type }) {
+        if (type !== "email-verification") {
+          throw new Error("Only registration email verification is supported by this OTP endpoint.");
+        }
+        await sendRegistrationOtp({ to: email, otp });
+      },
+    })] : []),
     gateIdentitySessions(),
 
     // One genericOAuth provider per upstream (when auth is on), all federating
