@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, Building2, Users, Loader2, Clock3, LogOut } from "lucide-react";
 import { getSessionContext } from "@/lib/api/session";
+import { getDemoDataStatus, loadDemoData } from "@/lib/api/demo-data";
 import { listRosters } from "@/lib/api/roster";
 import { listStaff } from "@/lib/api/people";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -19,6 +20,9 @@ export default function WorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [hasCompany, setHasCompany] = useState(true);
   const [error, setError] = useState("");
+  const [demoLoaded, setDemoLoaded] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoMessage, setDemoMessage] = useState("");
 
   useEffect(() => {
     if (isPending) return;
@@ -41,6 +45,10 @@ export default function WorkspacePage() {
         }
         setOrg(result.data.organization);
         setMembership(result.data.membership);
+        if (result.data.membership.role === "OWNER") {
+          const demo = await getDemoDataStatus();
+          if (active && demo.ok) setDemoLoaded(demo.data.loaded);
+        }
         const [rostersResult, staffResult] = await Promise.all([listRosters(), listStaff()]);
         if (!active) return;
         if (rostersResult.ok) setRosters(rostersResult.data.length);
@@ -71,6 +79,30 @@ export default function WorkspacePage() {
           <div className="rounded-2xl border border-[#E0E9E1] bg-white p-6"><Users className="text-[#248357]" size={22}/><p className="mt-5 text-3xl font-semibold">{staff}</p><p className="mt-1 text-sm text-[#68796E]">Active team members</p></div>
           <div className="rounded-2xl border border-[#E0E9E1] bg-white p-6"><CalendarDays className="text-[#248357]" size={22}/><p className="mt-5 text-3xl font-semibold">{rosters}</p><p className="mt-1 text-sm text-[#68796E]">Roster periods</p></div>
         </div>
+        {membership?.role === "OWNER" && <div className="mt-8 rounded-2xl border border-[#C7E6D1] bg-[#EFF8F1] p-7">
+          <p className="text-xs font-bold uppercase tracking-widest text-[#247F56]">Preview workspace</p>
+          <h2 className="mt-3 text-xl font-semibold">{demoLoaded ? "Demo data is ready" : "Explore Shiftii with sample data"}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#587361]">
+            {demoLoaded ? "Your company has the fictional sample team and rosters. Open the calendar to explore." : "Create 12 fictional employees, 3 locations, 5 positions, and 2 sample roster cycles with shifts. Existing company records are preserved."}
+          </p>
+          {demoMessage && <p role="status" className="mt-3 text-sm font-medium text-[#176343]">{demoMessage}</p>}
+          <div className="mt-5 flex flex-wrap gap-3">
+            {!demoLoaded && <button type="button" disabled={demoBusy} onClick={async () => {
+              if (!window.confirm("Load clearly labelled fictional employees and shifts into your current company? This action cannot be automatically undone.")) return;
+              setDemoBusy(true); setDemoMessage("");
+              const response = await loadDemoData();
+              if (!response.ok) {
+                setDemoMessage(response.error);
+              } else {
+                setDemoLoaded(true); setStaff(prev => prev + response.data.syntheticStaff);
+                setRosters(prev => prev + response.data.rosters);
+                setDemoMessage("Sample records created successfully.");
+              }
+              setDemoBusy(false);
+            }} className="rounded-xl bg-[#176343] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{demoBusy ? "Loading..." : "Load demo data"}</button>}
+            <Link href="/app/roster" className="inline-flex items-center gap-2 rounded-xl border border-[#B6D8BF] bg-white px-5 py-3 text-sm font-medium text-[#176343]">Open calendar <ArrowRight size={17}/></Link>
+          </div>
+        </div>}
         <div className="mt-9 rounded-2xl border border-[#E0E9E1] bg-white p-7">
           <h2 className="text-xl font-semibold">You're in charge of your workspace.</h2><p className="mt-2 text-sm text-[#68796E]">You're signed in as {membership?.role?.toLowerCase()}. Company settings and scheduling tools are being connected to your dashboard.</p>
           <div className="mt-6 flex flex-wrap gap-3"><Link href="/onboarding" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><Building2 size={17}/> Company setup</Link><Link href="/app/roster" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><CalendarDays size={17}/> Open roster calendar</Link><Link href="/app/availability" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><Clock3 size={17}/> My availability</Link></div>
