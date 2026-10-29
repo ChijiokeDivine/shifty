@@ -40,10 +40,10 @@ function LoginFields() {
       const result = await authClient.signIn.email({
         email: email.trim().toLowerCase(),
         password,
-        callbackURL: nextDestination(),
+        callbackURL: "/app",
       });
       if (result.error) setError(result.error.message ?? "Could not sign in.");
-      else window.location.assign(nextDestination());
+      else window.location.assign("/app");
     } catch {
       setError("Sign-in failed. Please try again.");
     } finally {
@@ -56,7 +56,6 @@ function LoginFields() {
     <form onSubmit={submit} className="space-y-5">
       <div><label className="text-sm font-medium" htmlFor="login-email">Email address</label><input id="login-email" type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className={field}/></div>
       <div><label className="text-sm font-medium" htmlFor="login-password">Password</label><input id="login-password" type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className={field}/></div>
-      <div className="text-right"><Link href="/forgot-password" className="text-sm font-medium text-[#176343] hover:underline">Forgot password?</Link></div>
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       <button disabled={busy} type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#176343] px-5 py-3.5 font-semibold text-white hover:bg-[#10492F] disabled:opacity-60">{busy ? <><Loader2 size={18} className="animate-spin"/> Signing in...</> : <>Sign in <ArrowRight size={18}/></>}</button>
     </form>
@@ -65,11 +64,4 @@ function LoginFields() {
       <div className="grid gap-2">{GROK_PROVIDERS.map(provider=><button key={provider.providerId} type="button" onClick={()=>{void signIn(provider.providerId,{callbackURL:"/app"}).catch(()=>setError("Provider sign-in failed."));}} className="rounded-xl border border-[#D8E5DB] px-4 py-3 text-sm font-medium hover:bg-[#F5F9F5]">Continue with {provider.label}</button>)}</div>
     </div>}
   </div>;
-}
-
-function nextDestination(): string {
-  if (typeof window === "undefined") return "/app";
-  const token = new URLSearchParams(window.location.search).get("invite");
-  // Only allow server-issued invite token destinations, not arbitrary URLs.
-  return token && /^[a-f0-9]{64}$/.test(token) ? `/invite/${token}` : "/app";
 }

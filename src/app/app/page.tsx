@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, Building2, Users, Loader2, Clock3, LogOut, UserPlus } from "lucide-react";
+import { ArrowRight, CalendarDays, Building2, Users, Loader2, Clock3, LogOut } from "lucide-react";
 import { getSessionContext } from "@/lib/api/session";
 import { listRosters } from "@/lib/api/roster";
 import { listStaff } from "@/lib/api/people";
@@ -72,8 +72,8 @@ export default function WorkspacePage() {
           <div className="rounded-2xl border border-[#E0E9E1] bg-white p-6"><CalendarDays className="text-[#248357]" size={22}/><p className="mt-5 text-3xl font-semibold">{rosters}</p><p className="mt-1 text-sm text-[#68796E]">Roster periods</p></div>
         </div>
         <div className="mt-9 rounded-2xl border border-[#E0E9E1] bg-white p-7">
-          <h2 className="text-xl font-semibold">You're in charge of your workspace.</h2><p className="mt-2 text-sm text-[#68796E]">You're signed in as {membership?.role?.toLowerCase()}. Start by bringing teammates into your workspace, then create and publish rosters.</p>
-          <div className="mt-6 flex flex-wrap gap-3"><Link href="/app/roster" className="inline-flex items-center gap-2 rounded-xl bg-[#176343] px-4 py-3 text-sm font-semibold text-white"><CalendarDays size={17}/> Open roster calendar</Link><Link href="/app/availability" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm font-semibold text-[#176343]"><Clock3 size={17}/> My availability</Link><Link href="/app/team" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm font-semibold text-[#176343]"><Users size={17}/> Team directory</Link>{["OWNER", "ADMIN", "MANAGER"].includes(membership?.role ?? "") && <Link href="/app/invitations" className="inline-flex items-center gap-2 rounded-xl bg-[#176343] px-4 py-3 text-sm font-semibold text-white"><UserPlus size={17}/> Invite team members</Link>}<Link href="/onboarding" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><Building2 size={17}/> Company setup</Link><span className="inline-flex items-center gap-2 rounded-xl bg-[#F1F7F2] px-4 py-3 text-sm text-[#53715F]"><Clock3 size={17}/> Shift scheduling coming next</span></div>
+          <h2 className="text-xl font-semibold">You're in charge of your workspace.</h2><p className="mt-2 text-sm text-[#68796E]">You're signed in as {membership?.role?.toLowerCase()}. Company settings and scheduling tools are being connected to your dashboard.</p>
+          <div className="mt-6 flex flex-wrap gap-3"><Link href="/onboarding" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><Building2 size={17}/> Company setup</Link><span className="inline-flex items-center gap-2 rounded-xl bg-[#F1F7F2] px-4 py-3 text-sm text-[#53715F]"><Clock3 size={17}/> Shift scheduling coming next</span></div>
         </div>
       </>}
     </div>
