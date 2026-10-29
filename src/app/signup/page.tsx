@@ -34,7 +34,7 @@ export default function SignUpPage() {
 
   async function verifyRegistrationCode(event: React.FormEvent) {
     event.preventDefault();setError("");
-    if (!/^\\d{6}$/.test(otp)) { setError("Enter the six-digit code from your email."); return; }
+    if (!/^\d{6}$/.test(otp)) { setError("Enter the six-digit code from your email."); return; }
     setBusy(true);
     try {
       const result = await authClient.emailOtp.verifyEmail({
@@ -110,7 +110,7 @@ export default function SignUpPage() {
             <form onSubmit={verifyRegistrationCode} className="mt-6 space-y-4">
               <label htmlFor="verification-otp" className="block text-sm font-semibold">Verification code
                 <input id="verification-otp" autoFocus required autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} minLength={6}
-                  value={otp} onChange={e=>setOtp(e.target.value.replace(/\\D/g,"").slice(0,6))}
+                  value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,"").slice(0,6))}
                   placeholder="000000" className={field+" text-center text-2xl font-bold tracking-[0.35em]"} />
               </label>
               {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
