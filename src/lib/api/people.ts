@@ -43,6 +43,47 @@ export async function updateOrgSettings(input: {
     });
 }
 
+export async function updateStaffProfile(input: {
+  membershipId: string;
+  displayName?: string;
+  targetWeeklyHours?: number | null;
+  role?: "ADMIN" | "MANAGER" | "EMPLOYEE";
+  locationIds?: string[];
+  positionIds?: string[];
+  primaryLocationId?: string | null;
+}) {
+  const userId = await requireAuthedUserId();
+  return withOrg(userId, async (ctx) => {
+    const { updateStaffProfile } = await import("@/lib/shiftii/services/staff.server");
+    const { membershipId, ...patch } = input;
+    return updateStaffProfile(ctx, membershipId, patch);
+  });
+}
+
+export async function deactivateStaff(input: { membershipId: string }) {
+  const userId = await requireAuthedUserId();
+  return withOrg(userId, async (ctx) => {
+    const { deactivateStaff } = await import("@/lib/shiftii/services/staff.server");
+    return deactivateStaff(ctx, input.membershipId);
+  });
+}
+
+export async function createLocation(input: { name: string }) {
+  const userId = await requireAuthedUserId();
+  return withOrg(userId, async (ctx) => {
+    const { createLocation } = await import("@/lib/shiftii/services/staff.server");
+    return createLocation(ctx, input.name);
+  });
+}
+
+export async function createPosition(input: { name: string }) {
+  const userId = await requireAuthedUserId();
+  return withOrg(userId, async (ctx) => {
+    const { createPosition } = await import("@/lib/shiftii/services/staff.server");
+    return createPosition(ctx, input.name);
+  });
+}
+
 export async function listAvailabilityRules(input: { membershipId?: string }) {
   const data = input ?? {};
   const userId = await requireAuthedUserId();

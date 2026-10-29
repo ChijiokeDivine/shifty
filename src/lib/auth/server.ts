@@ -35,6 +35,7 @@ import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
+import { isAuthEmailConfigured, sendAuthEmail } from "./transactional-email.server";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
@@ -208,8 +209,40 @@ export const auth = betterAuth({
   // flicker-prevention guidance (gate on `isPending`; SSR the session).
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
-  // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+  // Password signup fails closed until a verified email provider is configured.
+  // Third-party auth remains independent of transactional email.
+  ...(emailAndPasswordEnabled ? {
+    emailVerification: {
+      sendOnSignUp: isAuthEmailConfigured(),
+      sendOnSignIn: isAuthEmailConfigured(),
+      sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+        await sendAuthEmail({
+          to: user.email,
+          subject: "Verify your Shiftii email",
+          action: "Verify your email address to activate your Shiftii account:",
+          url,
+          expiresIn: "1 hour",
+        });
+      },
+    },
+    emailAndPassword: {
+      enabled: true,
+      disableSignUp: !isAuthEmailConfigured(),
+      requireEmailVerification: true,
+      autoSignIn: false,
+      revokeSessionsOnPasswordReset: true,
+      resetPasswordTokenExpiresIn: 3600,
+      sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+        await sendAuthEmail({
+          to: user.email,
+          subject: "Reset your Shiftii password",
+          action: "Use this secure link to reset your password:",
+          url,
+          expiresIn: "1 hour",
+        });
+      },
+    },
+  } : {}),
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a

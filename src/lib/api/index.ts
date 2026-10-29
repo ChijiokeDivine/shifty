@@ -20,12 +20,15 @@ export type { Result, Ok, Fail } from "./_run";
 
 export { getSessionContext, getDashboard } from "./session";
 export { getOnboardingStatus, registerCompany } from "./onboarding";
+export { listInvitations, createInvitation, revokeInvitation, previewInvitation, acceptInvitation } from "./invitations";
 
 export {
   listShifts,
   getShift,
   createShift,
   assignShift,
+  rescheduleShift,
+  moveAndAssignShift,
   unassignShift,
   cancelShift,
   setOpenForClaim,
@@ -47,6 +50,10 @@ export {
 
 export {
   listStaff,
+  updateStaffProfile,
+  deactivateStaff,
+  createLocation,
+  createPosition,
   listLocations,
   listPositions,
   updateOrgSettings,
@@ -88,8 +95,10 @@ export {
 
 export const API_CATALOG: { group: string; name: string; purpose: string }[] = [
   { group: "session", name: "getSessionContext", purpose: "Org + membership for the signed-in user (seeds hospital on first call)" },
+  { group: "people", name: "createInvitation / acceptInvitation", purpose: "Invite and onboard staff securely with single-use links" },
   { group: "session", name: "getDashboard", purpose: "Tonight's coverage, gaps, pending work, fatigue, credentials, my shifts" },
   { group: "roster", name: "createRoster", purpose: "Manager creates a new organization-scoped draft roster" },
+  { group: "roster", name: "rescheduleShift", purpose: "Move shifts across dates or times with timezone-safe conflict checks" },
   { group: "roster", name: "listShifts", purpose: "Filterable shift list (unit, date, mine, open claims)" },
   { group: "roster", name: "claimOpenShift", purpose: "Nurse claims an open shift; auto or manager approval" },
   { group: "roster", name: "releaseAssignedShift", purpose: "Ask to give up an assigned shift" },
@@ -98,6 +107,8 @@ export const API_CATALOG: { group: string; name: string; purpose: string }[] = [
   { group: "roster", name: "assignShift / unassignShift / setOpenForClaim", purpose: "Manager assignment + marketplace toggle" },
   { group: "roster", name: "generateFairRoster", purpose: "Local constraint solver for unfilled slots" },
   { group: "people", name: "listStaff / listLocations / listPositions", purpose: "Directory" },
+  { group: "people", name: "updateStaffProfile / deactivateStaff", purpose: "Manage staff profiles, roles, assignments and status" },
+  { group: "people", name: "createLocation / createPosition", purpose: "Set up company locations and job roles" },
   { group: "people", name: "parsePreference", purpose: "Local NLP: 'I can't do nights next week'" },
   { group: "people", name: "submitLeave / reviewLeave", purpose: "Leave workflow" },
   { group: "people", name: "listCredentialAlerts", purpose: "Local expiry warnings (last-4 only, never full license)" },

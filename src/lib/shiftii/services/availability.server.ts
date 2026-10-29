@@ -1,5 +1,6 @@
 import { nid } from "../ids";
-import { bool, dateStr, json, num, numOrNull, q, str } from "../db.server";
+import { bool, dateStr, json, num, numOrNull, q, qOne, str } from "../db.server";
+import { ConstraintError, NotFoundError } from "../errors";
 import { dateInZone } from "../time";
 import { audit } from "../audit.server";
 import { parsePreferenceText } from "@/lib/local-ml/preference-nlp";
@@ -38,6 +39,13 @@ export async function upsertRule(
 ) {
   const membershipId = input.membershipId ?? ctx.membership.id;
   await assertSelfOrManager(ctx, membershipId);
+  if (!Number.isInteger(input.dayOfWeek) || input.dayOfWeek < 0 || input.dayOfWeek > 6 ||
+      !Number.isInteger(input.startMinute) || !Number.isInteger(input.endMinute) ||
+      input.startMinute < 0 || input.startMinute >= 1440 ||
+      input.endMinute < 0 || input.endMinute > 1440 ||
+      input.startMinute === input.endMinute) {
+    throw new ConstraintError(["Choose a valid day and start/end time."]);
+  }
   const id = nid("avl");
   await q(
     `insert into availability_rules (
@@ -103,6 +111,11 @@ export async function addException(
 ) {
   const membershipId = input.membershipId ?? ctx.membership.id;
   await assertSelfOrManager(ctx, membershipId);
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(input.date) ||
+      Number.isNaN(Date.parse(input.date + "T12:00:00Z")) ||
+      new Date(input.date + "T12:00:00Z").toISOString().slice(0,10) !== input.date) {
+    throw new ConstraintError(["Choose a valid date."]);
+  }
   const id = nid("aex");
   await q(
     `insert into availability_exceptions (
@@ -166,7 +179,14 @@ export async function parseAndApplyPreference(
 }
 
 async function assertSelfOrManager(ctx: SessionContext, membershipId: string) {
-  if (membershipId === ctx.membership.id) return;
-  const { assertManager } = await import("../context.server");
-  assertManager(ctx);
+  if (membershipId !== ctx.membership.id) {
+    const { assertManager } = await import("../context.server");
+    assertManager(ctx);
+  }
+  // A manager must never access availability records outside their organization.
+  const member = await qOne<{ id: string }>(
+    `select id from memberships where id = $1 and organization_id = $2 and status = 'ACTIVE'`,
+    [membershipId, ctx.organization.id],
+  );
+  if (!member) throw new NotFoundError("Staff member not found in this company.");
 }

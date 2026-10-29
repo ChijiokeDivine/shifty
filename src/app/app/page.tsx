@@ -73,7 +73,7 @@ export default function WorkspacePage() {
         </div>
         <div className="mt-9 rounded-2xl border border-[#E0E9E1] bg-white p-7">
           <h2 className="text-xl font-semibold">You're in charge of your workspace.</h2><p className="mt-2 text-sm text-[#68796E]">You're signed in as {membership?.role?.toLowerCase()}. Company settings and scheduling tools are being connected to your dashboard.</p>
-          <div className="mt-6 flex flex-wrap gap-3"><Link href="/onboarding" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><Building2 size={17}/> Company setup</Link><span className="inline-flex items-center gap-2 rounded-xl bg-[#F1F7F2] px-4 py-3 text-sm text-[#53715F]"><Clock3 size={17}/> Shift scheduling coming next</span></div>
+          <div className="mt-6 flex flex-wrap gap-3"><Link href="/onboarding" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><Building2 size={17}/> Company setup</Link><Link href="/app/roster" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><CalendarDays size={17}/> Open roster calendar</Link><Link href="/app/availability" className="inline-flex items-center gap-2 rounded-xl border border-[#DCE7DF] px-4 py-3 text-sm text-[#176343]"><Clock3 size={17}/> My availability</Link></div>
         </div>
       </>}
     </div>

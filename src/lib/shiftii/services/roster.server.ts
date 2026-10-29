@@ -9,9 +9,11 @@ import { listShifts, assignShift } from "./shifts.server";
 import type { SessionContext } from "../types";
 
 export async function listRosters(ctx: SessionContext) {
+  const manager = ["OWNER", "ADMIN", "MANAGER"].includes(ctx.membership.role);
   const rows = await q<Record<string, unknown>>(
-    `select * from rosters where organization_id = $1 order by start_date desc`,
-    [ctx.organization.id],
+    `select * from rosters where organization_id = $1
+       and ($2::boolean or status = 'PUBLISHED') order by start_date desc`,
+    [ctx.organization.id, manager],
   );
   return rows.map((r) => ({
     id: str(r.id),
