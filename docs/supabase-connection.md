@@ -2,9 +2,15 @@
 
 Shiftii already uses PostgreSQL through `pg`. Supabase acts as the managed Postgres database; existing Next.js server actions and Better Auth can remain in place. **Do not add Supabase browser keys or switch authentication providers just to use its database.**
 
-## Current state
+## Current state (2026-10-28)
 
-Existing Supabase project: `dfovxoxevxeoibyllcph` (US West). It was inactive and a restore was requested on 2026-10-27. Do not migrate until its status is ACTIVE/HEALTHY and its schema has been inventoried.
+Existing Supabase project: `dfovxoxevxeoibyllcph` (US West) is **ACTIVE_HEALTHY**.
+
+The Next.js Shiftii schema was installed in this Supabase project's `public` schema in a tracked Supabase migration named `create_shiftii_nextjs_schema_private_api`. The app's `_migrations` table records `0001_auth.sql` and `0002_schema.sql` as applied. All 28 application/auth tables and the migration ledger have Row Level Security enabled, with all direct `anon` and `authenticated` table privileges revoked. Next.js should use a **server-only Postgres database role**, not Supabase client-side Data API access.
+
+**Important:** The 19 old Django tables are still present and have unsafe public API grants and disabled RLS. They were deliberately not changed or deleted. Before inviting real users, back up or remove the legacy tables, or restrict them with carefully reviewed RLS and grants. This is a release blocker.
+
+**Not yet complete:** The hosted Next.js application's `DATABASE_URL` secret has not been supplied or verified from the runtime. Demo data has not been inserted into a user workspace. The signed-in company owner can opt into a demo seed through the dashboard once auth and database connectivity work. No live end-to-end test has been completed.
 
 ## Connect server-side (after restore)
 
