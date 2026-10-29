@@ -16,12 +16,48 @@ export default function SignUpPage() {
   const [showPassword,setShowPassword]=useState(false);
   const [emailReady,setEmailReady]=useState<boolean | null>(null);
   const [verificationSent,setVerificationSent]=useState(false);
+  const [verified,setVerified]=useState(false);
+  const [otp,setOtp]=useState("");
+  const [resendCooldown,setResendCooldown]=useState(0);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
 
   useEffect(()=>{
     void emailDeliveryStatus().then(s=>setEmailReady(s.configured)).catch(()=>setEmailReady(false));
   },[]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timeout = setTimeout(() => setResendCooldown(v => Math.max(0, v - 1)), 1000);
+    return () => clearTimeout(timeout);
+  }, [resendCooldown]);
+
+  async function verifyRegistrationCode(event: React.FormEvent) {
+    event.preventDefault();setError("");
+    if (!/^\\d{6}$/.test(otp)) { setError("Enter the six-digit code from your email."); return; }
+    setBusy(true);
+    try {
+      const result = await authClient.emailOtp.verifyEmail({
+        email: email.trim().toLowerCase(), otp,
+      });
+      if (result.error) setError(result.error.message ?? "Invalid or expired code. Try again.");
+      else { setVerified(true); setOtp(""); }
+    } catch { setError("We could not verify your code. Please try again."); }
+    finally { setBusy(false); }
+  }
+
+  async function resendCode() {
+    if (busy || resendCooldown > 0) return;
+    setBusy(true);setError("");
+    try {
+      const result = await authClient.emailOtp.sendVerificationOtp({
+        email: email.trim().toLowerCase(), type: "email-verification",
+      });
+      if (result.error) setError(result.error.message ?? "Unable to resend the code.");
+      else { setOtp("");setResendCooldown(60); }
+    } catch {setError("Unable to resend the code. Try again.");}
+    finally {setBusy(false);}
+  }
 
   function destination() {
     if (typeof window !== "undefined") {
@@ -40,7 +76,7 @@ export default function SignUpPage() {
     try {
       const response=await authClient.signUp.email({name:name.trim(),email:email.trim().toLowerCase(),password,callbackURL:destination()});
       if(response.error)setError(response.error.message??"Unable to create your account.");
-      else setVerificationSent(true);
+      else {setVerificationSent(true);setPassword("");setConfirmation("");setResendCooldown(60);}
     }catch{setError("Unable to create your account. Please try again.");}
     finally{setBusy(false);}
   }
@@ -61,7 +97,32 @@ export default function SignUpPage() {
         <p className="text-xs font-bold uppercase tracking-[0.17em] text-[#699B3C]">Step 1 of 2 · Account details</p>
         <h2 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">Create your account.</h2>
         <p className="mt-4 text-base leading-7 text-[#7A8A7B]">Your own secure sign-in for Shiftii. You'll register your company next.</p>
-        {verificationSent ? <div className="mt-8 rounded-2xl border border-[#CBE5C9] bg-[#F0F8EC] p-6"><MailCheck className="text-[#2D7B44]" size={32}/><h3 className="mt-4 text-xl font-semibold">Check your inbox</h3><p role="status" className="mt-3 text-sm leading-6 text-[#617765]">We've requested a verification email for {email}. Follow the link to verify your account, then sign in to register your company.</p><Link href="/login" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#1C5B39] px-5 py-3 font-semibold text-white">Go to sign in <ArrowRight size={17}/></Link></div>
+        {verified ? <div className="mt-8 rounded-2xl border border-[#CBE5C9] bg-[#F0F8EC] p-6">
+            <CheckCircle2 className="text-[#2D7B44]" size={34}/>
+            <h3 className="mt-4 text-xl font-semibold">Email verified!</h3>
+            <p role="status" className="mt-3 text-sm leading-6 text-[#617765]">Your Shiftii account is verified. Sign in using your email and password, then continue setting up your company.</p>
+            <Link href="/login" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#1C5B39] px-5 py-3 font-semibold text-white">Sign in <ArrowRight size={17}/></Link>
+          </div>
+          : verificationSent ? <div className="mt-8 rounded-2xl border border-[#CBE5C9] bg-white p-6 shadow-sm">
+            <MailCheck className="text-[#2D7B44]" size={34}/>
+            <h3 className="mt-4 text-2xl font-semibold">Verify your email</h3>
+            <p className="mt-3 text-sm leading-6 text-[#617765]">We sent a six-digit verification code to <strong>{email}</strong>. It expires in 10 minutes.</p>
+            <form onSubmit={verifyRegistrationCode} className="mt-6 space-y-4">
+              <label htmlFor="verification-otp" className="block text-sm font-semibold">Verification code
+                <input id="verification-otp" autoFocus required autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} minLength={6}
+                  value={otp} onChange={e=>setOtp(e.target.value.replace(/\\D/g,"").slice(0,6))}
+                  placeholder="000000" className={field+" text-center text-2xl font-bold tracking-[0.35em]"} />
+              </label>
+              {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
+              <button type="submit" disabled={busy||otp.length!==6} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1C5B39] px-5 py-4 font-semibold text-white disabled:opacity-50">
+                {busy ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>} Verify email <ArrowRight size={18}/>
+              </button>
+            </form>
+            <button type="button" disabled={busy||resendCooldown>0} onClick={()=>{void resendCode();}} className="mt-5 w-full text-center text-sm font-semibold text-[#256842] disabled:opacity-50">
+              {resendCooldown>0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}
+            </button>
+            <p className="mt-3 text-center text-xs text-[#7B8F7B]">Check your spam folder if the code hasn't arrived.</p>
+          </div>
           : !authEnabled ? <p className="mt-7 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Authentication is disabled for this environment.</p>
           : user && !isPending ? <div className="mt-7"><CheckCircle2 className="text-[#2D7B44]" size={30}/><p className="mt-3 text-sm text-[#6E806F]">You're signed in already.</p><Link href="/onboarding" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#1C5B39] px-5 py-3 text-white">Continue company registration <ArrowRight size={17}/></Link></div>
           : <form onSubmit={submit} className="mt-8 space-y-5">
