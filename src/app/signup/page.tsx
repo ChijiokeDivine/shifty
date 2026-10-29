@@ -1,72 +1,80 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, MailCheck, ShieldCheck, UsersRound } from "lucide-react";
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { emailDeliveryStatus } from "@/lib/api/auth-status";
 
 export default function SignUpPage() {
   const { user, isPending } = useCurrentUserState();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [name,setName]=useState("");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [confirmation,setConfirmation]=useState("");
+  const [showPassword,setShowPassword]=useState(false);
+  const [emailReady,setEmailReady]=useState<boolean | null>(null);
+  const [verificationSent,setVerificationSent]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    if (password.length < 8) {
-      setError("Use a password with at least 8 characters.");
-      return;
+  useEffect(()=>{
+    void emailDeliveryStatus().then(s=>setEmailReady(s.configured)).catch(()=>setEmailReady(false));
+  },[]);
+
+  function destination() {
+    if (typeof window !== "undefined") {
+      const token=new URLSearchParams(window.location.search).get("invite");
+      if (token && /^[a-f0-9]{64}$/.test(token)) return `/invite/${token}`;
     }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await authClient.signUp.email({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        password,
-        callbackURL: "/onboarding",
-      });
-      if (result.error) {
-        setError(result.error.message ?? "Could not create your account.");
-      } else {
-        window.location.assign("/onboarding");
-      }
-    } catch {
-      setError("Could not create your account. Please try again.");
-    } finally {
-      setBusy(false);
-    }
+    return "/onboarding";
   }
 
-  const field = "mt-2 w-full rounded-xl border border-[#D8E5DB] bg-white px-4 py-3 text-[#18241E] outline-none focus:border-[#248357] focus:ring-4 focus:ring-[#248357]/10";
-  return (
-    <main className="min-h-screen bg-[#F5F9F5] text-[#18241E]">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-7"><Link href="/" className="text-2xl font-semibold text-[#176343]">shiftii<span className="text-[#58B785]">.</span></Link><Link href="/login" className="text-sm font-medium text-[#176343]">Already have an account? Sign in</Link></header>
-      <div className="mx-auto grid max-w-5xl gap-12 px-6 pb-20 pt-8 lg:grid-cols-2 lg:items-center lg:pt-16">
-        <div><span className="rounded-full bg-[#DDF2E4] px-3 py-2 text-xs font-semibold uppercase tracking-widest text-[#176343]">Step 1 of 2</span><h1 className="mt-7 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Make managing shifts <span className="text-[#248357]">feel effortless.</span></h1><p className="mt-6 max-w-md leading-7 text-[#647368]">Create your account, set up your company and bring your team together in one beautiful workspace.</p><p className="mt-10 flex items-center gap-3 text-sm text-[#426B51]"><ShieldCheck size={22}/> Your workspace and staff data stay private to your organization.</p></div>
-        <section className="rounded-3xl border border-[#E2EBE3] bg-white p-6 shadow-[0_25px_85px_rgba(20,61,39,0.07)] sm:p-10">
-          <h2 className="text-2xl font-semibold">Create an account</h2><p className="mt-2 text-sm text-[#647368]">First, create your personal login.</p>
-          {!authEnabled ? <p role="status" className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Account registration is not enabled in this environment. Enable authentication to continue.</p>
-          : user && !isPending ? <div className="mt-7"><p className="text-sm text-[#647368]">You are already signed in.</p><Link href="/onboarding" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#176343] px-5 py-3 text-white">Continue to company setup <ArrowRight size={18}/></Link></div>
-          : <form onSubmit={submit} className="mt-7 space-y-5">
-            <div><label htmlFor="full-name" className="text-sm font-medium">Full name</label><input id="full-name" required minLength={2} maxLength={120} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} className={field} placeholder="Your full name"/></div>
-            <div><label htmlFor="email" className="text-sm font-medium">Work email</label><input id="email" type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className={field} placeholder="you@company.com"/></div>
-            <div><label htmlFor="password" className="text-sm font-medium">Password</label><input id="password" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} className={field} placeholder="At least 8 characters"/></div>
-            <div><label htmlFor="confirm" className="text-sm font-medium">Confirm password</label><input id="confirm" type="password" required minLength={8} autoComplete="new-password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} className={field}/></div>
-            {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-            <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#176343] px-5 py-4 font-semibold text-white hover:bg-[#10492F] disabled:opacity-60">{busy ? <><Loader2 size={18} className="animate-spin"/> Creating account...</> : <>Create account <ArrowRight size={18}/></>}</button>
-            <p className="text-center text-xs text-[#849187]">You'll set up your company on the next screen.</p>
-          </form>}
-        </section>
+  async function submit(e:React.FormEvent) {
+    e.preventDefault();setError("");
+    if(!emailReady)return;
+    if(password.length<8||password.length>128){setError("Password must be 8–128 characters.");return;}
+    if(password!==confirmation){setError("Passwords do not match.");return;}
+    setBusy(true);
+    try {
+      const response=await authClient.signUp.email({name:name.trim(),email:email.trim().toLowerCase(),password,callbackURL:destination()});
+      if(response.error)setError(response.error.message??"Unable to create your account.");
+      else setVerificationSent(true);
+    }catch{setError("Unable to create your account. Please try again.");}
+    finally{setBusy(false);}
+  }
+
+  const field="mt-2 w-full rounded-xl border border-[#DCE8DE] bg-white px-4 py-3.5 text-[15px] text-[#1A3824] outline-none transition placeholder:text-[#A1ADA2] focus:border-[#80BD4D] focus:ring-4 focus:ring-[#B6DC8A]/20";
+  return <main className="min-h-screen bg-[#F7F9F5] text-[#193824] lg:grid lg:grid-cols-[minmax(360px,0.85fr)_minmax(480px,1.15fr)]">
+    <aside className="relative hidden flex-col justify-between overflow-hidden bg-[#143D29] px-12 py-12 text-white lg:flex xl:px-16">
+      <div className="pointer-events-none absolute -right-48 top-1/3 h-[560px] w-[560px] rounded-full border-[95px] border-[#A6CD51]/10"/>
+      <Link href="/" className="relative text-3xl font-bold tracking-tight">shiftii<span className="text-[#B8E069]">.</span></Link>
+      <div className="relative max-w-md py-24"><span className="rounded-full border border-[#A9D77D]/30 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-[#C4E99E]">Welcome to Shiftii</span><h1 className="mt-9 text-5xl font-semibold leading-[1.12] tracking-tight xl:text-6xl">Better shifts.<br/><span className="text-[#B8E069]">Happier teams.</span></h1><p className="mt-7 max-w-sm text-lg leading-8 text-[#CDDDD0]">Create your account, register your company, then manage every shift in one beautiful workspace.</p>
+        <div className="mt-12 space-y-5">{[["01","Create your account"],["02","Set up your company"],["03","Invite your team"]].map(([step,label])=><div key={step} className="flex items-center gap-4"><span className="grid h-10 w-10 place-items-center rounded-full border border-[#B8E069]/40 bg-[#B8E069]/10 text-sm font-bold text-[#C5E995]">{step}</span><span className="font-medium text-[#E3EEE3]">{label}</span></div>)}</div>
       </div>
-    </main>
-  );
+      <p className="relative text-xs text-[#A6C1AA]">© Shiftii · Built for teams of every size</p>
+    </aside>
+    <section className="flex min-h-screen flex-col">
+      <header className="mx-auto flex w-full max-w-xl items-center justify-between px-6 py-7 sm:px-8"><Link href="/" className="text-2xl font-bold text-[#1C5B39] lg:hidden">shiftii<span className="text-[#9BCB4F]">.</span></Link><span className="hidden text-sm text-[#809081] lg:inline">Company registration</span><Link href="/login" className="text-sm font-semibold text-[#256842] hover:underline">Already registered? Sign in</Link></header>
+      <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col justify-center px-6 pb-16 sm:px-8">
+        <p className="text-xs font-bold uppercase tracking-[0.17em] text-[#699B3C]">Step 1 of 2 · Account details</p>
+        <h2 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">Create your account.</h2>
+        <p className="mt-4 text-base leading-7 text-[#7A8A7B]">Your own secure sign-in for Shiftii. You'll register your company next.</p>
+        {verificationSent ? <div className="mt-8 rounded-2xl border border-[#CBE5C9] bg-[#F0F8EC] p-6"><MailCheck className="text-[#2D7B44]" size={32}/><h3 className="mt-4 text-xl font-semibold">Check your inbox</h3><p role="status" className="mt-3 text-sm leading-6 text-[#617765]">We've requested a verification email for {email}. Follow the link to verify your account, then sign in to register your company.</p><Link href="/login" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#1C5B39] px-5 py-3 font-semibold text-white">Go to sign in <ArrowRight size={17}/></Link></div>
+          : !authEnabled ? <p className="mt-7 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Authentication is disabled for this environment.</p>
+          : user && !isPending ? <div className="mt-7"><CheckCircle2 className="text-[#2D7B44]" size={30}/><p className="mt-3 text-sm text-[#6E806F]">You're signed in already.</p><Link href="/onboarding" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#1C5B39] px-5 py-3 text-white">Continue company registration <ArrowRight size={17}/></Link></div>
+          : <form onSubmit={submit} className="mt-8 space-y-5">
+            <label className="block text-sm font-semibold" htmlFor="full-name">Full name<input id="full-name" required minLength={2} maxLength={120} autoComplete="name" placeholder="Your full name" className={field} value={name} onChange={e=>setName(e.target.value)}/></label>
+            <label className="block text-sm font-semibold" htmlFor="signup-email">Email address<input id="signup-email" required type="email" autoComplete="email" placeholder="you@company.com" className={field} value={email} onChange={e=>setEmail(e.target.value)}/></label>
+            <label className="block text-sm font-semibold" htmlFor="signup-password">Create password<div className="relative"><input id="signup-password" required type={showPassword?"text":"password"} minLength={8} maxLength={128} autoComplete="new-password" placeholder="At least 8 characters" className={field+" pr-12"} value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setShowPassword(s=>!s)} aria-label={showPassword?"Hide password":"Show password"} className="absolute inset-y-0 right-3 top-2 px-2 text-[#728B74]">{showPassword?<EyeOff size={19}/>:<Eye size={19}/>}</button></div></label>
+            <label className="block text-sm font-semibold" htmlFor="signup-confirm">Confirm password<input id="signup-confirm" required type="password" minLength={8} maxLength={128} autoComplete="new-password" className={field} value={confirmation} onChange={e=>setConfirmation(e.target.value)}/></label>
+            {emailReady===false && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Registration is awaiting our email verification configuration. No account can be created from this form yet.</p>}
+            {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
+            <button type="submit" disabled={busy||!emailReady} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1C5B39] px-5 py-4 font-semibold text-white hover:bg-[#153F29] disabled:opacity-50">{busy?<Loader2 size={18} className="animate-spin"/>:<ShieldCheck size={18}/>} Create account <ArrowRight size={18}/></button>
+            <div className="flex items-center justify-center gap-2 text-xs text-[#758877]"><UsersRound size={15}/> One account, your own company workspace</div>
+          </form>}
+      </div>
+    </section>
+  </main>;
 }
