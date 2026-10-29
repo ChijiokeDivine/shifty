@@ -77,7 +77,7 @@ export function authOriginConfig(
   const allowedHosts = [...new Set([
     ...hosts(approved),
     ...preview,
-    ...(prod ? [] : ["localhost:*", "127.0.0.1:*", "[::1]:*"]),
+    ...(prod ? [] : ["localhost", "127.0.0.1", "[::1]"]),
   ])];
 
   const fallback = approved[0] ?? (!prod ? "http://localhost:3000" : undefined);
