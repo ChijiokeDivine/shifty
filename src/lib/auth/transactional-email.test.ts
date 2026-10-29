@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isAuthEmailConfigured, sendAuthEmail } from "./transactional-email.server.ts";
+import { isAuthEmailConfigured, sendAuthEmail, sendRegistrationOtp } from "./transactional-email.server.ts";
 
 test("email readiness requires both server-side settings", () => {
   assert.equal(isAuthEmailConfigured({}), false);
@@ -53,4 +53,32 @@ test("provider failure doesn't echo response content", async () => {
     ),
     (err: unknown) => err instanceof Error && err.message === "Unable to deliver authentication email.",
   );
+});
+
+test("registration OTP email accepts only six digits and includes expiry", async () => {
+  let body: { text?: string; subject?: string; to?: string[] } = {};
+  await sendRegistrationOtp({to:"new@example.com",otp:"012345"},{
+    env:{RESEND_API_KEY:"secret",AUTH_EMAIL_FROM:"verify@example.com"},
+    fetchImpl: async (_url, options) => {
+      body=JSON.parse(String(options?.body)) as typeof body;
+      return new Response("{}",{status:200});
+    },
+  });
+  assert.deepEqual(body.to,["new@example.com"]);
+  assert.equal(body.subject,"Your Shiftii verification code");
+  assert.match(body.text??"",/012345/);
+  assert.match(body.text??"",/10 minutes/);
+  for(const otp of ["12345","1234567","abc123","0000 0",""]) {
+    await assert.rejects(sendRegistrationOtp({to:"new@example.com",otp},{
+      env:{RESEND_API_KEY:"secret",AUTH_EMAIL_FROM:"verify@example.com"},
+      fetchImpl: async () => {throw new Error("must not send invalid OTP");},
+    }),/Invalid email verification code/);
+  }
+});
+
+test("registration OTP provider failure does not leak a code",async()=>{
+  await assert.rejects(sendRegistrationOtp({to:"new@example.com",otp:"123456"},{
+    env:{RESEND_API_KEY:"secret",AUTH_EMAIL_FROM:"verify@example.com"},
+    fetchImpl:async()=>new Response("secret:123456",{status:429}),
+  }),err=>err instanceof Error && err.message==="Unable to deliver authentication email.");
 });
