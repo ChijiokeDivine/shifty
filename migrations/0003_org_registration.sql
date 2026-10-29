@@ -12,7 +12,3 @@ create unique index if not exists organizations_access_code_unique
 alter table public.organizations
   add constraint organizations_access_code_format_chk
   check (access_code is null or access_code ~ '^[A-Z0-9][A-Z0-9-]{3,19}$');
-
--- This app's migrations are recorded separately from Supabase migrations.
-insert into public._migrations (name) values ('0003_org_registration.sql')
-  on conflict (name) do nothing;
