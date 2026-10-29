@@ -84,7 +84,7 @@ export async function sendRegistrationOtp(
   mail: { to: string; otp: string },
   options: { env?: AuthEmailEnvironment; fetchImpl?: typeof fetch } = {},
 ): Promise<void> {
-  if (!/^\\d{6}$/.test(mail.otp)) {
+  if (!/^\d{6}$/.test(mail.otp)) {
     throw new Error("Invalid email verification code.");
   }
   const env = options.env ?? {
@@ -111,7 +111,7 @@ export async function sendRegistrationOtp(
         from,
         to: [mail.to],
         subject: "Your Shiftii verification code",
-        text: `Welcome to Shiftii!\\n\\nYour six-digit verification code is ${mail.otp}.\\n\\nThis code expires after 10 minutes. If you didn't create a Shiftii account, please ignore this email.\\n\\nNever share this code with anyone.\\n\\nShiftii Team`,
+        text: `Welcome to Shiftii!\n\nYour six-digit verification code is ${mail.otp}.\n\nThis code expires after 10 minutes. If you didn't create a Shiftii account, please ignore this email.\n\nNever share this code with anyone.\n\nShiftii Team`,
       }),
       signal: AbortSignal.timeout(12_000),
     });
