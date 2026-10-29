@@ -183,6 +183,20 @@ export const auth = betterAuth({
   // local loopback variants, or clients get "Invalid origin".
   trustedOrigins,
 
+  // The default auth limiter is very permissive. Tighten the signup and OTP
+  // endpoints, including in development. For multi-instance production traffic,
+  // move rate-limit storage to a shared database/Redis backend.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 40,
+    customRules: {
+      "/sign-up/email": { window: 600, max: 5 },
+      "/email-otp/send-verification-otp": { window: 600, max: 3 },
+      "/email-otp/verify-email": { window: 600, max: 8 },
+    },
+  },
+
   // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
   // as trusted first-party identities. The broker owns identity and X emails are
   // synthetic/unverified, so WITHOUT this a login can fail with
