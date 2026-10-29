@@ -43,3 +43,16 @@ The original Shiftii signup design is restored:
 5. If the email is delayed, select **Resend code**. Previous code attempts and expiry are enforced server-side by Better Auth.
 
 The OTP is **registration email verification only**, not a passwordless login method, and is never logged. Setup requires a verified sender domain, `RESEND_API_KEY`, `AUTH_EMAIL_FROM`, and the remaining production environment variables listed above. An actual delivery/inbox test remains pending until those credentials are configured.
+
+## Troubleshooting `Invalid origin` during sign-up
+
+Better Auth rejects a credentialed POST if the browser's `Origin` does not match a trusted origin. This happens before user creation and is not a bad-password error.
+
+- Open DevTools → Network → `/api/auth/sign-up/email` and check the **Request Headers → Origin**. Do not post passwords, authorization headers or session cookies.
+- Configure `BETTER_AUTH_URL` as the **actual** public origin of your hosted Shiftii app (for example `https://shiftii.example`, without a path).
+- For Vercel deployments, the backend also reads exact `VERCEL_URL` and `VERCEL_PROJECT_PRODUCTION_URL` hosts. To support an additional custom preview origin, list that exact HTTPS origin in `AUTH_TRUSTED_ORIGINS` (comma-separated).
+- For local development, `localhost` and `127.0.0.1` ports 3000, 3001, 8080 and 8081 are allowed, but those HTTP origins are **never** allowed in production.
+- Redeploy or restart the app after changing the environment. Avoid disabling the origin check or trusting `*.vercel.app` generally.
+- The older signup screenshot matches the `main` branch. The newer six-digit flow remains on `backend-stabilization` until the selected deployment is updated. Nothing here automatically merges to `main` or deploys it.
+
+**Do not set `AUTH_TRUSTED_ORIGINS` to `*` and do not send credentials from an unrelated domain.** In a preview environment make sure the app server is serving the same branch as the page.
