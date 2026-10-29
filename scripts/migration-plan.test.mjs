@@ -61,7 +61,7 @@ test("the active auth and app migrations are discoverable in order", () => {
   const pending = pendingMigrations(readdirSync(migrationsDir), []);
   assert.deepEqual(
     pending.map(({ name }) => name),
-    ["0001_auth.sql", "0002_schema.sql"],
+    ["0001_auth.sql", "0002_schema.sql", "0003_org_registration.sql"],
   );
   assert.ok(readdirSync(join(migrationsDir, "auth")).includes(AUTH_MIGRATION));
 });
