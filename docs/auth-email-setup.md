@@ -12,6 +12,14 @@ Verification callbacks, the email OTP server plugin, and password-reset delivery
 
 After `pnpm build:dev`, run `node --experimental-strip-types --test scripts/auth-without-email.test.mjs` to verify the built app's signup, session, sign-out, password validation, and disabled email endpoints against an isolated in-memory database. The backend verification workflow runs this check automatically; it skips when email delivery is restored.
 
+## Preview deployment sessions and company registration
+
+Vercel applies environment variables separately to Preview and Production. A `*-git-backend-stabilization-*.vercel.app` preview needs its own applicable `DATABASE_URL`, a stable high-entropy `BETTER_AUTH_SECRET` (at least 32 characters), and `NEXT_PUBLIC_AUTH_ENABLED=true`. The origin settings described below must also apply to that deployment. Editing only Production variables does not configure a Preview build. Redeploy after changing either scope.
+
+Without `DATABASE_URL`, the application falls back to process-local PGLite. Without `BETTER_AUTH_SECRET`, its temporary secret is also process-local. Separate serverless functions or restarted instances cannot reliably share that account/session state. A successful signup screen alone therefore does not demonstrate persistent signup. Verify the account exists in the intended database and that the authenticated `getOnboardingStatus` and `registerCompany` server actions succeed.
+
+The isolated signup integration test now invokes both company-registration actions, verifies company creation, and confirms that unsigned requests still receive `UNAUTHORIZED`. It does not use the live Supabase database or provider credentials.
+
 ## Configuration
 
 1. Verify a sending domain with Resend.

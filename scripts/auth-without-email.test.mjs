@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
@@ -93,6 +94,30 @@ test("signup and password sessions work while email delivery is paused", {
     assert.equal(response.status, 200);
     return response.json();
   }
+  async function onboardingAction(name, args, cookie = "") {
+    const manifest = JSON.parse(readFileSync(".next/server/server-reference-manifest.json", "utf8"));
+    const entry = Object.entries(manifest.node).find(([, value]) =>
+      value.exportedName === name && Object.hasOwn(value.workers, "app/onboarding/page"));
+    assert.ok(entry, `The built app must export the ${name} server action.`);
+    const response = await fetch(`${origin}/onboarding`, {
+      method: "POST",
+      headers: {
+        ...deploymentHeaders, Cookie: cookie, Origin: authOrigin,
+        "Next-Action": entry[0], Accept: "text/x-component",
+        "Content-Type": "text/plain;charset=UTF-8", "Sec-Fetch-Site": "same-origin",
+      },
+      body: JSON.stringify(args),
+    });
+    assert.equal(response.status, 200);
+    const records = (await response.text()).split("\n").flatMap((line) => {
+      const match = /^[0-9a-f]+:(\{.*\})$/.exec(line);
+      if (!match) return [];
+      try { return [JSON.parse(match[1])]; } catch { return []; }
+    });
+    const result = records.find((value) => typeof value.ok === "boolean");
+    assert.ok(result, "The server action must return an application result.");
+    return result;
+  }
 
   const untrusted = await fetch(`${origin}/api/auth/sign-up/email`, {
     method: "POST",
@@ -116,6 +141,22 @@ test("signup and password sessions work while email delivery is paused", {
   const onboarding = await fetch(`${origin}/onboarding`, { headers: { ...deploymentHeaders, Cookie: cookie } });
   assert.equal(onboarding.status, 200);
   assert.equal(new URL(onboarding.url).pathname, "/onboarding");
+
+  const unauthenticated = await onboardingAction("getOnboardingStatus", []);
+  assert.equal(unauthenticated.status, 401, "Company setup must require a real session.");
+  const beforeRegistration = await onboardingAction("getOnboardingStatus", [], cookie);
+  assert.equal(beforeRegistration.ok, true);
+  assert.equal(beforeRegistration.data.hasCompany, false);
+  const company = await onboardingAction("registerCompany", [{
+    companyName: "Integration test company", ownerName: "Test owner", timezone: "America/Winnipeg",
+    contactEmail: email, firstLocation: "Test location", firstPosition: "Test role",
+    companyCode: `TEST-${randomUUID().slice(0, 8).toUpperCase()}`,
+  }], cookie);
+  assert.equal(company.ok, true, company.error ?? "The signed-in owner must be able to create a company.");
+  const afterRegistration = await onboardingAction("getOnboardingStatus", [], cookie);
+  assert.equal(afterRegistration.ok, true);
+  assert.equal(afterRegistration.data.hasCompany, true);
+  assert.equal(afterRegistration.data.organizationName, "Integration test company");
 
   const signedOut = await post("sign-out", {}, cookie);
   assert.equal(signedOut.status, 200);
