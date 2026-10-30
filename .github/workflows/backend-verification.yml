@@ -47,3 +47,6 @@ jobs:
       - name: Production compilation (without database migrations)
         if: ${{ always() && steps.install.outcome == 'success' }}
         run: pnpm run build:dev
+
+      - name: Signup and password sessions without email delivery
+        run: node --experimental-strip-types --test scripts/auth-without-email.test.mjs

@@ -34,7 +34,7 @@ import { bearer, genericOAuth, emailOTP } from "better-auth/plugins";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
-import { emailAndPasswordEnabled } from "./email-password";
+import { authEmailsEnabled, emailAndPasswordEnabled } from "./email-password";
 import { authOriginConfig } from "./origin-config";
 import { isAuthEmailConfigured, sendAuthEmail, sendRegistrationOtp } from "./transactional-email.server";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
@@ -198,9 +198,9 @@ export const auth = betterAuth({
   // flicker-prevention guidance (gate on `isPending`; SSR the session).
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
-  // Password signup fails closed until a verified email provider is configured.
-  // Third-party auth remains independent of transactional email.
-  ...(emailAndPasswordEnabled ? {
+  // Email delivery is temporarily paused. Keep the callbacks ready to restore,
+  // but do not register verification or reset handlers while it is disabled.
+  ...(emailAndPasswordEnabled && authEmailsEnabled ? {
     emailVerification: {
       sendOnSignUp: false,
       sendOnSignIn: false,
@@ -214,22 +214,26 @@ export const auth = betterAuth({
         });
       },
     },
+  } : {}),
+  ...(emailAndPasswordEnabled ? {
     emailAndPassword: {
       enabled: true,
-      disableSignUp: !isAuthEmailConfigured(),
-      requireEmailVerification: true,
-      autoSignIn: false,
+      disableSignUp: authEmailsEnabled && !isAuthEmailConfigured(),
+      requireEmailVerification: authEmailsEnabled,
+      autoSignIn: !authEmailsEnabled,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: 3600,
-      sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
-        await sendAuthEmail({
-          to: user.email,
-          subject: "Reset your Shiftii password",
-          action: "Use this secure link to reset your password:",
-          url,
-          expiresIn: "1 hour",
-        });
-      },
+      ...(authEmailsEnabled ? {
+        sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+          await sendAuthEmail({
+            to: user.email,
+            subject: "Reset your Shiftii password",
+            action: "Use this secure link to reset your password:",
+            url,
+            expiresIn: "1 hour",
+          });
+        },
+      } : {}),
     },
   } : {}),
 
@@ -252,7 +256,7 @@ export const auth = betterAuth({
   },
 
   plugins: [
-    ...(emailAndPasswordEnabled ? [emailOTP({
+    ...(emailAndPasswordEnabled && authEmailsEnabled ? [emailOTP({
       otpLength: 6,
       expiresIn: 600,
       allowedAttempts: 5,

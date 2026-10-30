@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, Building2, CheckCircle2, Eye, EyeOff, KeyRound, 
 import { authClient, authEnabled, GROK_PROVIDERS, signIn } from "@/lib/auth/client";
 import { lookupCompanyCode } from "@/lib/api/company-code";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { authEmailsEnabled } from "@/lib/auth/email-password";
 
 function redirectTarget() {
   if (typeof window !== "undefined") {
@@ -87,7 +88,7 @@ export default function LoginPage() {
             {companyName && <div className="flex items-center gap-3 rounded-xl border border-[#D7E8D6] bg-[#F0F7ED] p-3"><Building2 size={19} className="text-[#39774B]"/><div><p className="text-xs text-[#719275]">Company</p><p className="text-sm font-semibold">{companyName}</p></div></div>}
             <label htmlFor="email" className="block text-sm font-semibold">Email address<input id="email" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} className={field} placeholder="you@company.com"/></label>
             <label htmlFor="password" className="block text-sm font-semibold">Password<div className="relative"><input id="password" type={showPassword?"text":"password"} required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className={field+" pr-12"} placeholder="Enter your password"/><button type="button" aria-label={showPassword?"Hide password":"Show password"} onClick={()=>setShowPassword(x=>!x)} className="absolute inset-y-0 right-3 top-2 flex items-center px-2 text-[#728B74]">{showPassword?<EyeOff size={19}/>:<Eye size={19}/>}</button></div></label>
-            <div className="flex justify-between gap-3"><button type="button" onClick={()=>{setStep("company");setOwnerLogin(false);setError("");}} className="inline-flex items-center gap-2 text-sm text-[#6D806F]"><ArrowLeft size={16}/> Back</button><Link href="/forgot-password" className="text-sm font-semibold text-[#256842]">Forgot password?</Link></div>
+            <div className="flex justify-between gap-3"><button type="button" onClick={()=>{setStep("company");setOwnerLogin(false);setError("");}} className="inline-flex items-center gap-2 text-sm text-[#6D806F]"><ArrowLeft size={16}/> Back</button>{authEmailsEnabled && <Link href="/forgot-password" className="text-sm font-semibold text-[#256842]">Forgot password?</Link>}</div>
             {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
             <button type="submit" disabled={!authEnabled||busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1C5B39] py-4 font-semibold text-white transition hover:bg-[#153F29] disabled:opacity-50">{busy?<Loader2 size={18} className="animate-spin"/>:<LockKeyhole size={18}/>} Sign in <ArrowRight size={18}/></button>
             {GROK_PROVIDERS.length > 0 && <div className="space-y-2 border-t border-[#EDF0EB] pt-5">{GROK_PROVIDERS.map(p=><button key={p.providerId} type="button" onClick={()=>{void signIn(p.providerId,{callbackURL:redirectTarget()}).catch(()=>setError("Provider sign-in failed."));}} className="w-full rounded-xl border border-[#DCE8DE] px-4 py-3 text-sm font-medium hover:bg-[#F7FAF5]">Continue with {p.label}</button>)}</div>}

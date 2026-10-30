@@ -2,6 +2,16 @@
 
 Shiftii uses **Better Auth** for accounts and **Resend** for delivery of verification and password-reset emails. The email sender is server-only and does not expose credentials through the browser or app API.
 
+## Temporary email pause
+
+`authEmailsEnabled` in `src/lib/auth/email-password.ts` is currently `false` at the owner's request. Email/password signup and sign-in work without Resend. Signup creates a session and continues directly to company setup, skipping the email readiness check and six-digit verification screen.
+
+Verification callbacks, the email OTP server plugin, and password-reset delivery are disabled during this pause. The login page hides the password-reset link. New accounts retain `emailVerified: false`; they are not marked as verified. Staff invitations still require a verified email, so new unverified accounts cannot accept staff invitations during the pause.
+
+`DATABASE_URL`, `BETTER_AUTH_URL`, and `BETTER_AUTH_SECRET` are still required for a persistent deployment. To restore the normal email behavior described below, configure Resend, set `authEmailsEnabled` back to `true`, rebuild, redeploy, and test actual delivery.
+
+After `pnpm build:dev`, run `node --experimental-strip-types --test scripts/auth-without-email.test.mjs` to verify the built app's signup, session, sign-out, password validation, and disabled email endpoints against an isolated in-memory database. The backend verification workflow runs this check automatically; it skips when email delivery is restored.
+
 ## Configuration
 
 1. Verify a sending domain with Resend.

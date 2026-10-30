@@ -6,6 +6,7 @@ import { ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, MailCheck, ShieldCheck,
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { emailDeliveryStatus } from "@/lib/api/auth-status";
+import { authEmailsEnabled } from "@/lib/auth/email-password";
 
 export default function SignUpPage() {
   const { user, isPending } = useCurrentUserState();
@@ -14,7 +15,7 @@ export default function SignUpPage() {
   const [password,setPassword]=useState("");
   const [confirmation,setConfirmation]=useState("");
   const [showPassword,setShowPassword]=useState(false);
-  const [emailReady,setEmailReady]=useState<boolean | null>(null);
+  const [emailReady,setEmailReady]=useState<boolean | null>(authEmailsEnabled ? null : true);
   const [verificationSent,setVerificationSent]=useState(false);
   const [verified,setVerified]=useState(false);
   const [otp,setOtp]=useState("");
@@ -23,6 +24,7 @@ export default function SignUpPage() {
   const [error,setError]=useState("");
 
   useEffect(()=>{
+    if (!authEmailsEnabled) return;
     void emailDeliveryStatus().then(s=>setEmailReady(s.configured)).catch(()=>setEmailReady(false));
   },[]);
 
@@ -76,7 +78,8 @@ export default function SignUpPage() {
     try {
       const response=await authClient.signUp.email({name:name.trim(),email:email.trim().toLowerCase(),password,callbackURL:destination()});
       if(response.error)setError(response.error.message??"Unable to create your account.");
-      else {setVerificationSent(true);setPassword("");setConfirmation("");setResendCooldown(60);}
+      else if (authEmailsEnabled) {setVerificationSent(true);setPassword("");setConfirmation("");setResendCooldown(60);}
+      else {setPassword("");setConfirmation("");window.location.assign(destination());}
     }catch{setError("Unable to create your account. Please try again.");}
     finally{setBusy(false);}
   }
