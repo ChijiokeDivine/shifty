@@ -60,7 +60,7 @@ Better Auth rejects a credentialed POST if the browser's `Origin` does not match
 
 - Open DevTools → Network → `/api/auth/sign-up/email` and check the **Request Headers → Origin**. Do not post passwords, authorization headers or session cookies.
 - Configure `BETTER_AUTH_URL` as the **actual** public origin of your hosted Shiftii app (for example `https://shiftii.example`, without a path).
-- For Vercel deployments, the backend also reads exact `VERCEL_URL` and `VERCEL_PROJECT_PRODUCTION_URL` hosts. To support an additional custom preview origin, list that exact HTTPS origin in `AUTH_TRUSTED_ORIGINS` (comma-separated).
+- For Vercel deployments, the backend also reads exact `VERCEL_URL`, `VERCEL_BRANCH_URL`, and `VERCEL_PROJECT_PRODUCTION_URL` hosts. The branch variable covers stable links such as `https://shifty-git-backend-stabilization-....vercel.app`, which differ from an individual build's deployment URL. Keep Vercel's **Enable access to System Environment Variables** setting enabled. To support an additional custom preview origin, list that exact HTTPS origin in `AUTH_TRUSTED_ORIGINS` (comma-separated).
 - For local development, `localhost` and `127.0.0.1` ports 3000, 3001, 8080 and 8081 are allowed, but those HTTP origins are **never** allowed in production.
 - Redeploy or restart the app after changing the environment. Avoid disabling the origin check or trusting `*.vercel.app` generally.
 - The older signup screenshot matches the `main` branch. The newer six-digit flow remains on `backend-stabilization` until the selected deployment is updated. Nothing here automatically merges to `main` or deploys it.

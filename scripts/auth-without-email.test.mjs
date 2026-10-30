@@ -19,8 +19,11 @@ test("signup and password sessions work while email delivery is paused", {
   const { port } = listener.address();
   await new Promise((resolve, reject) => listener.close((error) => error ? reject(error) : resolve()));
   const origin = `http://127.0.0.1:${port}`;
-  // Keep production HTTPS origin checks enabled while using loopback transport.
-  const authOrigin = "https://shiftii.example";
+  // Simulate a Vercel branch alias over loopback while keeping production HTTPS
+  // origin checks enabled. The canonical and individual build URLs differ.
+  const branchHost = "shiftii-git-backend-stabilization-example.vercel.app";
+  const authOrigin = `https://${branchHost}`;
+  const deploymentHeaders = { Host: branchHost, "X-Forwarded-Host": branchHost, "X-Forwarded-Proto": "https" };
   const server = spawn(process.execPath, [
     "node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port),
   ], {
@@ -30,9 +33,10 @@ test("signup and password sessions work while email delivery is paused", {
       DATABASE_URL: "",
       RESEND_API_KEY: "",
       AUTH_EMAIL_FROM: "",
-      BETTER_AUTH_URL: authOrigin,
-      VERCEL_URL: "",
-      VERCEL_PROJECT_PRODUCTION_URL: "",
+      BETTER_AUTH_URL: "https://shiftii.example",
+      VERCEL_URL: "shiftii-individual-build.vercel.app",
+      VERCEL_BRANCH_URL: branchHost,
+      VERCEL_PROJECT_PRODUCTION_URL: "shiftii.example",
       AUTH_TRUSTED_ORIGINS: "",
       BETTER_AUTH_SECRET: randomUUID() + randomUUID(),
       NEXT_PUBLIC_AUTH_ENABLED: "true",
@@ -55,6 +59,7 @@ test("signup and password sessions work while email delivery is paused", {
     assert.equal(server.exitCode, null, `The isolated application server stopped unexpectedly.\n${startupLog}`);
     try {
       const response = await fetch(`${origin}/api/auth/get-session`, {
+        headers: deploymentHeaders,
         signal: AbortSignal.timeout(1_000),
       });
       if (response.ok) { ready = true; break; }
@@ -68,7 +73,7 @@ test("signup and password sessions work while email delivery is paused", {
   async function post(path, body, cookie = "") {
     return fetch(`${origin}/api/auth/${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Origin: authOrigin, Cookie: cookie },
+      headers: { ...deploymentHeaders, "Content-Type": "application/json", Origin: authOrigin, Cookie: cookie },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(20_000),
     });
@@ -83,11 +88,18 @@ test("signup and password sessions work while email delivery is paused", {
   }
   async function session(cookie) {
     const response = await fetch(`${origin}/api/auth/get-session`, {
-      headers: { Cookie: cookie },
+      headers: { ...deploymentHeaders, Cookie: cookie },
     });
     assert.equal(response.status, 200);
     return response.json();
   }
+
+  const untrusted = await fetch(`${origin}/api/auth/sign-up/email`, {
+    method: "POST",
+    headers: { ...deploymentHeaders, "Content-Type": "application/json", Origin: "https://unrelated-project.vercel.app" },
+    body: JSON.stringify({ name: "Test owner", email, password }),
+  });
+  assert.equal(untrusted.status, 403, "Unrelated Vercel projects must remain untrusted.");
 
   const weak = await post("sign-up/email", { name: "Test owner", email, password: "short" });
   assert.equal(weak.status, 400, "Password validation must remain enforced.");
@@ -101,7 +113,7 @@ test("signup and password sessions work while email delivery is paused", {
   const cookie = sessionCookie(created);
   assert.equal((await session(cookie)).user.id, createdBody.user.id);
 
-  const onboarding = await fetch(`${origin}/onboarding`, { headers: { Cookie: cookie } });
+  const onboarding = await fetch(`${origin}/onboarding`, { headers: { ...deploymentHeaders, Cookie: cookie } });
   assert.equal(onboarding.status, 200);
   assert.equal(new URL(onboarding.url).pathname, "/onboarding");
 
@@ -120,8 +132,8 @@ test("signup and password sessions work while email delivery is paused", {
   const reset = await post("request-password-reset", { email });
   assert.equal(reset.ok, false, "Password reset must be disabled without a delivery callback.");
 
-  const signupPage = await fetch(`${origin}/signup`);
+  const signupPage = await fetch(`${origin}/signup`, { headers: deploymentHeaders });
   assert.doesNotMatch(await signupPage.text(), /Registration is awaiting our email verification configuration/);
-  const loginPage = await fetch(`${origin}/login`);
+  const loginPage = await fetch(`${origin}/login`, { headers: deploymentHeaders });
   assert.doesNotMatch(await loginPage.text(), /Forgot password\?/);
 });

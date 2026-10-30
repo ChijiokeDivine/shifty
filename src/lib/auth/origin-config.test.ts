@@ -32,6 +32,28 @@ test("production rejects insecure, malformed and credentialed origins", () => {
   }
 });
 
+test("Vercel branch aliases are trusted alongside deployment and production hosts", () => {
+  const branch = "shifty-git-backend-stabilization-shiftii629-5840.vercel.app";
+  const config = authOriginConfig({
+    NODE_ENV: "production",
+    BETTER_AUTH_URL: "https://shifty-pink.vercel.app",
+    VERCEL_URL: "shifty-deployment-abc.vercel.app",
+    VERCEL_BRANCH_URL: branch,
+    VERCEL_PROJECT_PRODUCTION_URL: "shifty-pink.vercel.app",
+  }, preview);
+  assert.ok(config.trustedOrigins.includes(`https://${branch}`));
+  assert.ok(typeof config.baseURL !== "string");
+  assert.ok(config.baseURL.allowedHosts.includes(branch));
+  assert.ok(!config.baseURL.allowedHosts.includes("*.vercel.app"));
+  assert.ok(!config.trustedOrigins.includes("https://unrelated-project.vercel.app"));
+});
+
+test("branch origins use the same HTTPS and exact-origin validation", () => {
+  for (const branch of ["http://branch.vercel.app", "https://branch.vercel.app/path", "https://user:password@branch.vercel.app"]) {
+    assert.throws(() => authOriginConfig({ NODE_ENV: "production", VERCEL_BRANCH_URL: branch }, preview));
+  }
+});
+
 test("one approved production origin uses fixed base URL", () => {
   const config=authOriginConfig({NODE_ENV:"production",BETTER_AUTH_URL:"https://shiftii.example/"},preview);
   assert.equal(config.baseURL,"https://shiftii.example");

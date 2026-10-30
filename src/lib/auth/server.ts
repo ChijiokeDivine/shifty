@@ -94,6 +94,7 @@ export const authConfigured =
 const { baseURL, trustedOrigins } = authOriginConfig({
   BETTER_AUTH_URL: env("BETTER_AUTH_URL"),
   VERCEL_URL: env("VERCEL_URL"),
+  VERCEL_BRANCH_URL: env("VERCEL_BRANCH_URL"),
   VERCEL_PROJECT_PRODUCTION_URL: env("VERCEL_PROJECT_PRODUCTION_URL"),
   AUTH_TRUSTED_ORIGINS: env("AUTH_TRUSTED_ORIGINS"),
   NODE_ENV: process.env.NODE_ENV,

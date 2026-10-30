@@ -5,6 +5,7 @@
 export type AuthOriginEnvironment = {
   BETTER_AUTH_URL?: string;
   VERCEL_URL?: string;
+  VERCEL_BRANCH_URL?: string;
   VERCEL_PROJECT_PRODUCTION_URL?: string;
   AUTH_TRUSTED_ORIGINS?: string;
   NODE_ENV?: string;
@@ -47,6 +48,7 @@ export function authOriginConfig(
       ? normalizeOrigin(config.BETTER_AUTH_URL, prod)
       : null,
     vercelOrigin(config.VERCEL_URL, prod),
+    vercelOrigin(config.VERCEL_BRANCH_URL, prod),
     vercelOrigin(config.VERCEL_PROJECT_PRODUCTION_URL, prod),
     ...(config.AUTH_TRUSTED_ORIGINS?.split(",")
       .map((x) => x.trim())
