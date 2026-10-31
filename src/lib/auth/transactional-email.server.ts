@@ -75,3 +75,50 @@ export async function sendAuthEmail(
     throw new Error("Unable to deliver authentication email.");
   }
 }
+
+/** Six-digit verification messages do not contain login links or passwords.
+ * The OTP is transient, should never be logged, and is never sent to a browser
+ * except through the user's private email inbox. Better Auth stores only its hash.
+ */
+export async function sendRegistrationOtp(
+  mail: { to: string; otp: string },
+  options: { env?: AuthEmailEnvironment; fetchImpl?: typeof fetch } = {},
+): Promise<void> {
+  if (!/^\d{6}$/.test(mail.otp)) {
+    throw new Error("Invalid email verification code.");
+  }
+  const env = options.env ?? {
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    AUTH_EMAIL_FROM: process.env.AUTH_EMAIL_FROM,
+  };
+  const key = env.RESEND_API_KEY?.trim();
+  const from = env.AUTH_EMAIL_FROM?.trim();
+  if (!key || !from) {
+    throw new Error("Transactional email delivery is not configured.");
+  }
+
+  const send = options.fetchImpl ?? fetch;
+  let response: Response;
+  try {
+    response = await send("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "User-Agent": "shiftii/1.0",
+      },
+      body: JSON.stringify({
+        from,
+        to: [mail.to],
+        subject: "Your Shiftii verification code",
+        text: `Welcome to Shiftii!\n\nYour six-digit verification code is ${mail.otp}.\n\nThis code expires after 10 minutes. If you didn't create a Shiftii account, please ignore this email.\n\nNever share this code with anyone.\n\nShiftii Team`,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+  } catch {
+    throw new Error("Unable to deliver authentication email.");
+  }
+  if (!response.ok) {
+    throw new Error("Unable to deliver authentication email.");
+  }
+}

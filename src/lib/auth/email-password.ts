@@ -8,3 +8,8 @@
  * Do NOT edit `server.ts` for this — that file is frozen pre-wired config.
  */
 export const emailAndPasswordEnabled = true;
+
+// Temporary pause requested while the email provider is unavailable.
+// Restore to true after configuring and testing Resend delivery.
+// Accounts created during this pause remain unverified.
+export const authEmailsEnabled: boolean = false;

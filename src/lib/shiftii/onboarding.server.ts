@@ -10,6 +10,8 @@ export type RegisterCompanyInput = {
   contactEmail?: string;
   firstLocation?: string;
   firstPosition?: string;
+  companyAddress?: string;
+  companyCode?: string;
 };
 
 export async function registerCompany(userId: string, input: RegisterCompanyInput) {
@@ -19,6 +21,10 @@ export async function registerCompany(userId: string, input: RegisterCompanyInpu
   const locationName = input.firstLocation?.trim() || "Main location";
   const positionName = input.firstPosition?.trim() || "Team member";
   const timezone = input.timezone?.trim();
+  const companyAddress = input.companyAddress?.trim() || null;
+  const companyCode = input.companyCode?.trim().toUpperCase() || null;
+  if (companyAddress && companyAddress.length > 255) throw new ConstraintError(["Company address must be at most 255 characters."]);
+  if (companyCode && !/^[A-Z0-9][A-Z0-9-]{3,19}$/.test(companyCode)) throw new ConstraintError(["Company access code must have 4–20 letters, digits or hyphens."]);
   if (!companyName || companyName.length < 2 || companyName.length > 120)
     throw new ConstraintError(["Company name must be between 2 and 120 characters."]);
   if (!ownerName || ownerName.length < 2 || ownerName.length > 120)
@@ -51,6 +57,10 @@ export async function registerCompany(userId: string, input: RegisterCompanyInpu
     );
     if (existing) throw new ConflictError("You already belong to a company.");
 
+    if (companyCode) {
+      const taken = await qOne<{ id: string }>("select id from organizations where upper(access_code) = $1", [companyCode]);
+      if (taken) throw new ConflictError("This company code is already taken. Choose another.");
+    }
     const orgId = nid("org");
     const membershipId = nid("mem");
     const locationId = nid("loc");
@@ -61,9 +71,9 @@ export async function registerCompany(userId: string, input: RegisterCompanyInpu
 
     const [org] = await q<Record<string, unknown>>(
       `insert into organizations
-         (id, name, slug, contact_email, timezone)
-       values ($1,$2,$3,$4,$5) returning *`,
-      [orgId, companyName, slug, email, timezone],
+         (id, name, slug, contact_email, timezone, access_code, headquarters_address)
+       values ($1,$2,$3,$4,$5,$6,$7) returning *`,
+      [orgId, companyName, slug, email, timezone, companyCode, companyAddress],
     );
     const [membership] = await q<Record<string, unknown>>(
       `insert into memberships

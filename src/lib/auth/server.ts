@@ -30,12 +30,13 @@
  * a verified id via `@/lib/auth/middleware`.
  */
 import { betterAuth } from "better-auth";
-import { bearer, genericOAuth } from "better-auth/plugins";
+import { bearer, genericOAuth, emailOTP } from "better-auth/plugins";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
-import { emailAndPasswordEnabled } from "./email-password";
-import { isAuthEmailConfigured, sendAuthEmail } from "./transactional-email.server";
+import { authEmailsEnabled, emailAndPasswordEnabled } from "./email-password";
+import { authOriginConfig } from "./origin-config";
+import { isAuthEmailConfigured, sendAuthEmail, sendRegistrationOtp } from "./transactional-email.server";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
@@ -90,39 +91,14 @@ export const authConfigured =
 // it derives the origin per-request from the (proxied) host, validated against the
 // preview allowlist, which makes the OAuth `redirect_uri` the concrete preview URL
 // the broker's preview client accepts.
-const explicitBaseURL = env("BETTER_AUTH_URL");
-// Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
-// requires a mutable `allowedHosts: string[]`.
-const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
-// Local `npm run dev` (port 8080 contract). Browsers may send Origin as any of
-// these for the same server — trusting only `localhost` rejects `127.0.0.1` and
-// breaks email/password with "Invalid origin".
-const LOCAL_DEV_ORIGINS: string[] = [
-  "http://localhost:8080",
-  "http://127.0.0.1:8080",
-  "http://[::1]:8080",
-];
-const baseURL = explicitBaseURL ?? {
-  // Include loopback hosts so dynamic baseURL resolves for local email/password
-  // (not only the preview wildcard).
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
-  // `auto` → trust both http:// and https:// expansions of allowedHosts
-  // (preview is https; local dev is http).
-  protocol: "auto" as const,
-  fallback: "http://localhost:8080",
-};
-
-// Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
-// Missing entries here surface as FORBIDDEN "Invalid origin".
-const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
-  : [
-      // Host wildcards (matched against Origin's host)
-      ...previewAllowedHosts,
-      // Full-origin wildcards (matched against Origin)
-      ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
-      ...LOCAL_DEV_ORIGINS,
-    ];
+const { baseURL, trustedOrigins } = authOriginConfig({
+  BETTER_AUTH_URL: env("BETTER_AUTH_URL"),
+  VERCEL_URL: env("VERCEL_URL"),
+  VERCEL_BRANCH_URL: env("VERCEL_BRANCH_URL"),
+  VERCEL_PROJECT_PRODUCTION_URL: env("VERCEL_PROJECT_PRODUCTION_URL"),
+  AUTH_TRUSTED_ORIGINS: env("AUTH_TRUSTED_ORIGINS"),
+  NODE_ENV: process.env.NODE_ENV,
+}, PREVIEW_ALLOWED_HOSTS);
 
 const databaseUrl = env("DATABASE_URL");
 
@@ -183,6 +159,20 @@ export const auth = betterAuth({
   // local loopback variants, or clients get "Invalid origin".
   trustedOrigins,
 
+  // The default auth limiter is very permissive. Tighten the signup and OTP
+  // endpoints, including in development. For multi-instance production traffic,
+  // move rate-limit storage to a shared database/Redis backend.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 40,
+    customRules: {
+      "/sign-up/email": { window: 600, max: 5 },
+      "/email-otp/send-verification-otp": { window: 600, max: 3 },
+      "/email-otp/verify-email": { window: 600, max: 8 },
+    },
+  },
+
   // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
   // as trusted first-party identities. The broker owns identity and X emails are
   // synthetic/unverified, so WITHOUT this a login can fail with
@@ -209,12 +199,12 @@ export const auth = betterAuth({
   // flicker-prevention guidance (gate on `isPending`; SSR the session).
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
-  // Password signup fails closed until a verified email provider is configured.
-  // Third-party auth remains independent of transactional email.
-  ...(emailAndPasswordEnabled ? {
+  // Email delivery is temporarily paused. Keep the callbacks ready to restore,
+  // but do not register verification or reset handlers while it is disabled.
+  ...(emailAndPasswordEnabled && authEmailsEnabled ? {
     emailVerification: {
-      sendOnSignUp: isAuthEmailConfigured(),
-      sendOnSignIn: isAuthEmailConfigured(),
+      sendOnSignUp: false,
+      sendOnSignIn: false,
       sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
         await sendAuthEmail({
           to: user.email,
@@ -225,22 +215,26 @@ export const auth = betterAuth({
         });
       },
     },
+  } : {}),
+  ...(emailAndPasswordEnabled ? {
     emailAndPassword: {
       enabled: true,
-      disableSignUp: !isAuthEmailConfigured(),
-      requireEmailVerification: true,
-      autoSignIn: false,
+      disableSignUp: authEmailsEnabled && !isAuthEmailConfigured(),
+      requireEmailVerification: authEmailsEnabled,
+      autoSignIn: !authEmailsEnabled,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: 3600,
-      sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
-        await sendAuthEmail({
-          to: user.email,
-          subject: "Reset your Shiftii password",
-          action: "Use this secure link to reset your password:",
-          url,
-          expiresIn: "1 hour",
-        });
-      },
+      ...(authEmailsEnabled ? {
+        sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+          await sendAuthEmail({
+            to: user.email,
+            subject: "Reset your Shiftii password",
+            action: "Use this secure link to reset your password:",
+            url,
+            expiresIn: "1 hour",
+          });
+        },
+      } : {}),
     },
   } : {}),
 
@@ -263,6 +257,21 @@ export const auth = betterAuth({
   },
 
   plugins: [
+    ...(emailAndPasswordEnabled && authEmailsEnabled ? [emailOTP({
+      otpLength: 6,
+      expiresIn: 600,
+      allowedAttempts: 5,
+      storeOTP: "hashed",
+      sendVerificationOnSignUp: isAuthEmailConfigured(),
+      overrideDefaultEmailVerification: true,
+      disableSignUp: true,
+      async sendVerificationOTP({ email, otp, type }) {
+        if (type !== "email-verification") {
+          throw new Error("Only registration email verification is supported by this OTP endpoint.");
+        }
+        await sendRegistrationOtp({ to: email, otp });
+      },
+    })] : []),
     gateIdentitySessions(),
 
     // One genericOAuth provider per upstream (when auth is on), all federating
